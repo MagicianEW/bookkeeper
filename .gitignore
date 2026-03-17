@@ -1,0 +1,59 @@
+# ===========================
+# Android / Gradle
+# ===========================
+*.iml
+.gradle/
+local.properties
+.idea/
+.DS_Store
+build/
+captures/
+.externalNativeBuild/
+.cxx/
+*.apk
+*.aab
+*.ap_
+*.dex
+
+# Signing configs (NEVER commit keystore)
+*.jks
+*.keystore
+keystore.properties
+
+# Generated files
+bin/
+gen/
+out/
+
+# Google Services (contains API keys)
+google-services.json
+GoogleService-Info.plist
+
+# Lint
+lint/intermediates/
+lint/generated/
+lint/outputs/
+lint/tmp/
+lint/reports/
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.Spotlight-V100
+.Trashes
+
+# IntelliJ / Android Studio
+*.iws
+.idea/
+out/
+.idea_modules/
+
+# Kotlin
+*.kotlin_module
