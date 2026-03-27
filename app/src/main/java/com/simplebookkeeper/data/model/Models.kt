@@ -7,7 +7,7 @@ import androidx.room.TypeConverters
 import java.util.Date
 
 // 收支类型
-enum class TransactionType { INCOME, EXPENSE }
+enum class TransactionType { INCOME, EXPENSE, SAVING, WITHDRAW }
 
 // 付款方式
 enum class PaymentMethod {

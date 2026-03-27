@@ -12,6 +12,8 @@ import androidx.compose.ui.platform.LocalContext
 // 主色：绿色系（记账软件常用）
 val IncomeGreen = Color(0xFF4CAF50)
 val ExpenseRed = Color(0xFFF44336)
+val SavingBlue = Color(0xFF2196F3)      // 储蓄 - 蓝色
+val WithdrawOrange = Color(0xFFFF9800)   // 支取 - 橙色
 val PrimaryColor = Color(0xFF1976D2)
 
 private val LightColorScheme = lightColorScheme(

@@ -63,7 +63,7 @@ interface TransactionDao {
     """)
     fun getMonthlyIncome(year: String, month: String): Flow<Double>
 
-    // 本月支出总额
+    // 本月支出总额（不含储蓄）
     @Query("""
         SELECT COALESCE(SUM(amount), 0) FROM transactions 
         WHERE type = 'EXPENSE'
@@ -71,6 +71,15 @@ interface TransactionDao {
           AND strftime('%m', date / 1000, 'unixepoch', 'localtime') = :month
     """)
     fun getMonthlyExpense(year: String, month: String): Flow<Double>
+
+    // 本月储蓄总额
+    @Query("""
+        SELECT COALESCE(SUM(amount), 0) FROM transactions 
+        WHERE type = 'SAVING'
+          AND strftime('%Y', date / 1000, 'unixepoch', 'localtime') = :year
+          AND strftime('%m', date / 1000, 'unixepoch', 'localtime') = :month
+    """)
+    fun getMonthlySaving(year: String, month: String): Flow<Double>
 
     // 某年收入总额
     @Query("""
