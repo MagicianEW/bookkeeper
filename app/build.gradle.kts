@@ -13,8 +13,8 @@ android {
         applicationId = "com.simplebookkeeper"
         minSdk = 31
         targetSdk = 36
-        versionCode = 210
-        versionName = "0.2.10"
+        versionCode = 211
+        versionName = "0.2.11"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -36,6 +36,10 @@ android {
 
     buildFeatures {
         compose = true
+    }
+
+    lint {
+        error += "RemoveWorkManagerInitializer"
     }
 }
 
