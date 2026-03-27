@@ -67,6 +67,11 @@ fun SettingsScreen(
     var isTesting by remember { mutableStateOf(false) }
     var isSyncing by remember { mutableStateOf(false) }
 
+    // 冲突解决对话框状态
+    var showConflictDialog by remember { mutableStateOf(false) }
+    var conflictData by remember { mutableStateOf<Pair<Long, Long>?>(null) } // (localTime, remoteTime)
+    var conflictConfig by remember { mutableStateOf<WebDavConfig?>(null) } // 冲突时使用的配置
+
     val allCategories by viewModel.allCategories.collectAsState()
 
     // 导出文件选择器
@@ -298,7 +303,12 @@ fun SettingsScreen(
                             when (val result = app.webDavManager.sync(config, dbFile)) {
                                 is SyncResult.Success -> syncMessage = "✅ 同步成功"
                                 is SyncResult.Error -> syncMessage = "❌ 同步失败: ${result.message}"
-                                is SyncResult.Conflict -> syncMessage = "⚠️ 检测到冲突，请选择以哪端数据为准"
+                                is SyncResult.Conflict -> {
+                                    // 显示冲突解决对话框
+                                    conflictData = result.localTime to result.remoteTime
+                                    conflictConfig = config
+                                    showConflictDialog = true
+                                }
                             }
                             isSyncing = false
                         }
@@ -419,6 +429,92 @@ fun SettingsScreen(
     if (showAboutDialog) {
         AboutDialog(onDismiss = { showAboutDialog = false })
     }
+
+    // 冲突解决对话框
+    if (showConflictDialog && conflictData != null) {
+        val (localTime, remoteTime) = conflictData!!
+        val dateFormat = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
+        ConflictResolveDialog(
+            localTimeStr = dateFormat.format(Date(localTime)),
+            remoteTimeStr = dateFormat.format(Date(remoteTime)),
+            onResolve = { useLocal ->
+                scope.launch {
+                    val cfg = conflictConfig ?: return@launch
+                    val dbFile = context.getDatabasePath(AppDatabase.DB_NAME)
+                    if (useLocal) {
+                        // 以本地为准，上传覆盖云端
+                        when (val result = app.webDavManager.upload(cfg, dbFile)) {
+                            is SyncResult.Success -> syncMessage = "✅ 已以本地数据为准覆盖云端"
+                            is SyncResult.Error -> syncMessage = "❌ 上传失败: ${result.message}"
+                            else -> {}
+                        }
+                    } else {
+                        // 以云端为准，下载覆盖本地
+                        when (val result = app.webDavManager.download(cfg, dbFile)) {
+                            is SyncResult.Success -> syncMessage = "✅ 已以云端数据为准覆盖本地"
+                            is SyncResult.Error -> syncMessage = "❌ 下载失败: ${result.message}"
+                            else -> {}
+                        }
+                    }
+                }
+                showConflictDialog = false
+                conflictData = null
+                conflictConfig = null
+            },
+            onDismiss = {
+                showConflictDialog = false
+                conflictData = null
+                conflictConfig = null
+            }
+        )
+    }
+}
+
+// 冲突解决对话框
+@Composable
+fun ConflictResolveDialog(
+    localTimeStr: String,
+    remoteTimeStr: String,
+    onResolve: (useLocal: Boolean) -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        icon = { Icon(Icons.Default.Sync, contentDescription = null) },
+        title = { Text("检测到冲突", fontWeight = FontWeight.Bold) },
+        text = {
+            Column {
+                Text("本地数据最后修改时间：")
+                Text(localTimeStr, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Medium)
+                Spacer(modifier = Modifier.height(8.dp))
+                Text("云端数据最后修改时间：")
+                Text(remoteTimeStr, color = MaterialTheme.colorScheme.secondary, fontWeight = FontWeight.Medium)
+                Spacer(modifier = Modifier.height(16.dp))
+                Text("请选择以哪端数据为准：")
+            }
+        },
+        confirmButton = {
+            Column {
+                TextButton(
+                    onClick = { onResolve(true) },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("📱 以本地数据为准")
+                }
+                TextButton(
+                    onClick = { onResolve(false) },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("☁️ 以云端数据为准")
+                }
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("取消")
+            }
+        }
+    )
 }
 
 // ——— 工具组件 ———
