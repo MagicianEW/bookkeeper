@@ -26,6 +26,8 @@ import com.simplebookkeeper.data.model.Transaction
 import com.simplebookkeeper.data.model.TransactionType
 import com.simplebookkeeper.ui.theme.ExpenseRed
 import com.simplebookkeeper.ui.theme.IncomeGreen
+import com.simplebookkeeper.ui.theme.SavingBlue
+import com.simplebookkeeper.ui.theme.WithdrawOrange
 import com.simplebookkeeper.viewmodel.MainViewModel
 import java.text.SimpleDateFormat
 import java.util.Calendar
@@ -114,7 +116,7 @@ fun AddEditTransactionScreen(
                 .padding(padding)
                 .padding(16.dp)
         ) {
-            // 收入/支出切换
+            // 类型切换：支出/收入/储蓄/支取
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -130,13 +132,33 @@ fun AddEditTransactionScreen(
                         selectedCategoryId = 0L
                     }
                 )
-                Spacer(modifier = Modifier.width(16.dp))
+                Spacer(modifier = Modifier.width(8.dp))
                 TypeTab(
                     text = "收入",
                     selected = selectedType == TransactionType.INCOME,
                     color = IncomeGreen,
                     onClick = {
                         selectedType = TransactionType.INCOME
+                        selectedCategoryId = 0L
+                    }
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                TypeTab(
+                    text = "储蓄",
+                    selected = selectedType == TransactionType.SAVING,
+                    color = SavingBlue,
+                    onClick = {
+                        selectedType = TransactionType.SAVING
+                        selectedCategoryId = 0L
+                    }
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                TypeTab(
+                    text = "支取",
+                    selected = selectedType == TransactionType.WITHDRAW,
+                    color = WithdrawOrange,
+                    onClick = {
+                        selectedType = TransactionType.WITHDRAW
                         selectedCategoryId = 0L
                     }
                 )
@@ -254,19 +276,60 @@ fun AddEditTransactionScreen(
                 onClick = {
                     val amount = amountText.toDoubleOrNull() ?: return@Button
                     if (amount <= 0 || selectedCategoryId == 0L) return@Button
-                    val transaction = Transaction(
-                        id = transactionId ?: 0L,
-                        type = selectedType,
-                        amount = amount,
-                        categoryId = selectedCategoryId,
-                        paymentMethod = selectedPayment,
-                        note = note.trim(),
-                        date = selectedDate
-                    )
-                    if (isEditMode) {
-                        viewModel.updateTransaction(transaction) { onBack() }
-                    } else {
-                        viewModel.addTransaction(transaction) { onBack() }
+
+                    // 储蓄/支取需要特殊处理
+                    when (selectedType) {
+                        TransactionType.SAVING -> {
+                            // 储蓄：从余额中扣除，添加到储蓄池
+                            viewModel.addSaving(amount) {
+                                // 同时记录一笔支出类型的交易（类别为"储蓄"）
+                                val savingTransaction = Transaction(
+                                    id = 0L,
+                                    type = TransactionType.EXPENSE,
+                                    amount = amount,
+                                    categoryId = selectedCategoryId,
+                                    paymentMethod = selectedPayment,
+                                    note = note.trim().ifBlank { "储蓄" },
+                                    date = selectedDate
+                                )
+                                viewModel.addTransaction(savingTransaction) { onBack() }
+                            }
+                        }
+                        TransactionType.WITHDRAW -> {
+                            // 支取：从储蓄池取出，添加到收入
+                            viewModel.withdrawFromSavings(amount) { success ->
+                                if (success) {
+                                    // 同时记录一笔收入类型的交易
+                                    val withdrawTransaction = Transaction(
+                                        id = 0L,
+                                        type = TransactionType.INCOME,
+                                        amount = amount,
+                                        categoryId = selectedCategoryId,
+                                        paymentMethod = selectedPayment,
+                                        note = note.trim().ifBlank { "支取" },
+                                        date = selectedDate
+                                    )
+                                    viewModel.addTransaction(withdrawTransaction) { onBack() }
+                                }
+                            }
+                        }
+                        else -> {
+                            // 普通支出/收入
+                            val transaction = Transaction(
+                                id = transactionId ?: 0L,
+                                type = selectedType,
+                                amount = amount,
+                                categoryId = selectedCategoryId,
+                                paymentMethod = selectedPayment,
+                                note = note.trim(),
+                                date = selectedDate
+                            )
+                            if (isEditMode) {
+                                viewModel.updateTransaction(transaction) { onBack() }
+                            } else {
+                                viewModel.addTransaction(transaction) { onBack() }
+                            }
+                        }
                     }
                 },
                 modifier = Modifier

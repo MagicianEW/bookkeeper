@@ -17,6 +17,8 @@ import com.simplebookkeeper.data.model.Category
 import com.simplebookkeeper.data.model.TransactionType
 import com.simplebookkeeper.ui.theme.ExpenseRed
 import com.simplebookkeeper.ui.theme.IncomeGreen
+import com.simplebookkeeper.ui.theme.SavingBlue
+import com.simplebookkeeper.ui.theme.WithdrawOrange
 import java.text.SimpleDateFormat
 import java.util.Locale
 
@@ -28,8 +30,17 @@ fun TransactionItem(
     onLongClick: (() -> Unit)? = null
 ) {
     val dateFormat = SimpleDateFormat("MM-dd", Locale.getDefault())
-    val amountColor = if (transaction.type == TransactionType.INCOME) IncomeGreen else ExpenseRed
-    val amountPrefix = if (transaction.type == TransactionType.INCOME) "+" else "-"
+    val amountColor = when (transaction.type) {
+        TransactionType.INCOME -> IncomeGreen
+        TransactionType.EXPENSE -> ExpenseRed
+        TransactionType.SAVING -> SavingBlue
+        TransactionType.WITHDRAW -> WithdrawOrange
+    }
+    val amountPrefix = when (transaction.type) {
+        TransactionType.INCOME -> "+"
+        TransactionType.WITHDRAW -> "+"
+        else -> "-"
+    }
 
     Card(
         modifier = Modifier
@@ -51,10 +62,12 @@ fun TransactionItem(
                 modifier = Modifier
                     .size(40.dp)
                     .background(
-                        color = if (transaction.type == TransactionType.INCOME)
-                            IncomeGreen.copy(alpha = 0.15f)
-                        else
-                            ExpenseRed.copy(alpha = 0.15f),
+                        color = when (transaction.type) {
+                            TransactionType.INCOME -> IncomeGreen.copy(alpha = 0.15f)
+                            TransactionType.EXPENSE -> ExpenseRed.copy(alpha = 0.15f)
+                            TransactionType.SAVING -> SavingBlue.copy(alpha = 0.15f)
+                            TransactionType.WITHDRAW -> WithdrawOrange.copy(alpha = 0.15f)
+                        },
                         shape = RoundedCornerShape(10.dp)
                     ),
                 contentAlignment = Alignment.Center
@@ -105,6 +118,7 @@ fun TransactionItem(
 fun SummaryCard(
     income: Double,
     expense: Double,
+    savings: Double = 0.0,
     modifier: Modifier = Modifier
 ) {
     Card(
@@ -116,23 +130,38 @@ fun SummaryCard(
             containerColor = MaterialTheme.colorScheme.primary
         )
     ) {
-        Row(
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(20.dp),
-            horizontalArrangement = Arrangement.SpaceEvenly
+                .padding(20.dp)
         ) {
-            SummaryItem("收入", income, IncomeGreen)
-            VerticalDivider(
-                modifier = Modifier.height(50.dp),
-                color = Color.White.copy(alpha = 0.3f)
-            )
-            SummaryItem("支出", expense, ExpenseRed)
-            VerticalDivider(
-                modifier = Modifier.height(50.dp),
-                color = Color.White.copy(alpha = 0.3f)
-            )
-            SummaryItem("结余", income - expense, Color.White)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceEvenly
+            ) {
+                SummaryItem("收入", income, IncomeGreen)
+                VerticalDivider(
+                    modifier = Modifier.height(50.dp),
+                    color = Color.White.copy(alpha = 0.3f)
+                )
+                SummaryItem("支出", expense, ExpenseRed)
+                VerticalDivider(
+                    modifier = Modifier.height(50.dp),
+                    color = Color.White.copy(alpha = 0.3f)
+                )
+                SummaryItem("结余", income - expense, Color.White)
+            }
+            if (savings > 0) {
+                Spacer(modifier = Modifier.height(12.dp))
+                HorizontalDivider(color = Color.White.copy(alpha = 0.3f))
+                Spacer(modifier = Modifier.height(12.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    SummaryItem("存款", savings, SavingBlue)
+                }
+            }
         }
     }
 }

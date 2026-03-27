@@ -27,6 +27,7 @@ class SettingsRepository(private val context: Context) {
         private val WEBDAV_PASSWORD = stringPreferencesKey("webdav_password")
         private val WEBDAV_ENABLED = booleanPreferencesKey("webdav_enabled")
         private val CLOUD_SYNC_PROMPT_SHOWN = booleanPreferencesKey("cloud_sync_prompt_shown")
+        private val SAVINGS_BALANCE = stringPreferencesKey("savings_balance")
     }
 
     val webDavConfig: Flow<WebDavConfig> = context.settingsDataStore.data.map { prefs ->
@@ -60,5 +61,29 @@ class SettingsRepository(private val context: Context) {
         context.settingsDataStore.edit { prefs ->
             prefs[CLOUD_SYNC_PROMPT_SHOWN] = true
         }
+    }
+
+    // 存款余额
+    val savingsBalance: Flow<Double> = context.settingsDataStore.data.map { prefs ->
+        prefs[SAVINGS_BALANCE]?.toDoubleOrNull() ?: 0.0
+    }
+
+    suspend fun addToSavings(amount: Double) {
+        context.settingsDataStore.edit { prefs ->
+            val current = prefs[SAVINGS_BALANCE]?.toDoubleOrNull() ?: 0.0
+            prefs[SAVINGS_BALANCE] = (current + amount).toString()
+        }
+    }
+
+    suspend fun withdrawFromSavings(amount: Double): Boolean {
+        var success = false
+        context.settingsDataStore.edit { prefs ->
+            val current = prefs[SAVINGS_BALANCE]?.toDoubleOrNull() ?: 0.0
+            if (current >= amount) {
+                prefs[SAVINGS_BALANCE] = (current - amount).toString()
+                success = true
+            }
+        }
+        return success
     }
 }

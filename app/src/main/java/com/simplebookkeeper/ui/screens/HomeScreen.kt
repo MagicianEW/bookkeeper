@@ -28,6 +28,7 @@ fun HomeScreen(
 ) {
     val monthlyIncome by viewModel.monthlyIncome.collectAsState()
     val monthlyExpense by viewModel.monthlyExpense.collectAsState()
+    val savingsBalance by viewModel.savingsBalance.collectAsState()
     val monthlyTransactions by viewModel.monthlyTransactions.collectAsState()
     val categoriesMap by viewModel.categoriesMap.collectAsState()
     val displayYear by viewModel.displayYear.collectAsState()
@@ -78,7 +79,7 @@ fun HomeScreen(
             )
 
             // 汇总卡片
-            SummaryCard(income = monthlyIncome, expense = monthlyExpense)
+            SummaryCard(income = monthlyIncome, expense = monthlyExpense, savings = savingsBalance)
 
             // 账目列表
             if (monthlyTransactions.isEmpty()) {

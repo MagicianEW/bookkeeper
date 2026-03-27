@@ -73,6 +73,10 @@ abstract class AppDatabase : RoomDatabase() {
             Category(name = "兼职", type = TransactionType.INCOME, icon = "business_center", isDefault = true, sortOrder = 3),
             Category(name = "礼金", type = TransactionType.INCOME, icon = "card_giftcard", isDefault = true, sortOrder = 4),
             Category(name = "其他收入", type = TransactionType.INCOME, icon = "more_horiz", isDefault = true, sortOrder = 99),
+            // 储蓄分类
+            Category(name = "储蓄", type = TransactionType.SAVING, icon = "savings", isDefault = true, sortOrder = 1),
+            // 支取分类
+            Category(name = "支取", type = TransactionType.WITHDRAW, icon = "account_balance", isDefault = true, sortOrder = 1),
         )
     }
 }

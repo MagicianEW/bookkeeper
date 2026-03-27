@@ -83,6 +83,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _syncStatus = MutableStateFlow<String?>(null)
     val syncStatus: StateFlow<String?> = _syncStatus.asStateFlow()
 
+    // 储蓄余额
+    val savingsBalance: StateFlow<Double> = app.settingsRepository.savingsBalance
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0.0)
+
     fun setDisplayMonth(year: Int, month: Int) {
         _displayYear.value = year
         _displayMonth.value = month
@@ -115,6 +119,28 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             repo.deleteTransaction(transaction)
             val config = app.settingsRepository.webDavConfig.first()
             if (config.enabled) SyncWorker.syncNow(app)
+        }
+    }
+
+    // 储蓄（添加到储蓄池）
+    fun addSaving(amount: Double, onDone: () -> Unit) {
+        viewModelScope.launch {
+            app.settingsRepository.addToSavings(amount)
+            val config = app.settingsRepository.webDavConfig.first()
+            if (config.enabled) SyncWorker.syncNow(app)
+            onDone()
+        }
+    }
+
+    // 支取（从储蓄池取出）
+    fun withdrawFromSavings(amount: Double, onDone: (Boolean) -> Unit) {
+        viewModelScope.launch {
+            val success = app.settingsRepository.withdrawFromSavings(amount)
+            if (success) {
+                val config = app.settingsRepository.webDavConfig.first()
+                if (config.enabled) SyncWorker.syncNow(app)
+            }
+            onDone(success)
         }
     }
 
