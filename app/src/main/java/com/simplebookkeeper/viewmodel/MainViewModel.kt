@@ -83,6 +83,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _syncStatus = MutableStateFlow<String?>(null)
     val syncStatus: StateFlow<String?> = _syncStatus.asStateFlow()
 
+    // 储蓄余额
+    val savingsBalance: StateFlow<Double> = app.settingsRepository.savingsBalance
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0.0)
+
     fun setDisplayMonth(year: Int, month: Int) {
         _displayYear.value = year
         _displayMonth.value = month
@@ -142,6 +146,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val income = repo.getYearlyIncome(year)
         val expense = repo.getYearlyExpense(year)
         return Pair(income, expense)
+    }
+
+    // 计算年度储蓄（储蓄总额 - 支取总额）
+    suspend fun getYearlySavings(year: Int): Double {
+        val savingAmount = repo.getYearlySavingAmount(year)
+        val withdrawAmount = repo.getYearlyWithdrawAmount(year)
+        return savingAmount - withdrawAmount
     }
 
     // 分类管理

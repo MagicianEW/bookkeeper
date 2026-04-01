@@ -17,6 +17,7 @@ import com.simplebookkeeper.data.model.TransactionType
 import com.simplebookkeeper.ui.components.TransactionItem
 import com.simplebookkeeper.ui.theme.ExpenseRed
 import com.simplebookkeeper.ui.theme.IncomeGreen
+import com.simplebookkeeper.ui.theme.SavingBlue
 import com.simplebookkeeper.viewmodel.MainViewModel
 import kotlinx.coroutines.launch
 import java.util.Calendar
@@ -32,6 +33,7 @@ fun StatisticsScreen(
     var selectedYear by remember { mutableIntStateOf(currentYear) }
     var yearlyIncome by remember { mutableDoubleStateOf(0.0) }
     var yearlyExpense by remember { mutableDoubleStateOf(0.0) }
+    var yearlySavings by remember { mutableDoubleStateOf(0.0) }
     val availableYears by viewModel.availableYears.collectAsState()
     val categoriesMap by viewModel.categoriesMap.collectAsState()
 
@@ -41,6 +43,7 @@ fun StatisticsScreen(
             val (income, expense) = viewModel.getYearlySummary(selectedYear)
             yearlyIncome = income
             yearlyExpense = expense
+            yearlySavings = viewModel.getYearlySavings(selectedYear)
         }
     }
 
@@ -104,6 +107,15 @@ fun StatisticsScreen(
                     YearStatItem("年支出", yearlyExpense, ExpenseRed)
                     YearStatItem("年结余", yearlyIncome - yearlyExpense,
                         if (yearlyIncome >= yearlyExpense) IncomeGreen else ExpenseRed)
+                }
+                Spacer(modifier = Modifier.height(12.dp))
+                HorizontalDivider()
+                Spacer(modifier = Modifier.height(12.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    YearStatItem("年储蓄", yearlySavings, SavingBlue)
                 }
             }
         }

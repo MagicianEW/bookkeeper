@@ -59,6 +59,12 @@ class TransactionRepository(
     suspend fun getYearlyExpense(year: Int): Double =
         transactionDao.getYearlyExpense(year.toString())
 
+    suspend fun getYearlySavingAmount(year: Int): Double =
+        transactionDao.getYearlySavingAmount(year.toString())
+
+    suspend fun getYearlyWithdrawAmount(year: Int): Double =
+        transactionDao.getYearlyWithdrawAmount(year.toString())
+
     fun getAvailableYears(): Flow<List<String>> =
         transactionDao.getAvailableYears()
 
