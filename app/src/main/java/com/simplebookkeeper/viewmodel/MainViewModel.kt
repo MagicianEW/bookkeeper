@@ -148,6 +148,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         return Pair(income, expense)
     }
 
+    // 根据ID删除账目
+    fun deleteTransactionById(id: Long, onDone: () -> Unit = {}) {
+        viewModelScope.launch {
+            repo.deleteTransactionById(id)
+            val config = app.settingsRepository.webDavConfig.first()
+            if (config.enabled) SyncWorker.syncNow(app)
+            onDone()
+        }
+    }
+
     // 计算年度储蓄（储蓄总额 - 支取总额）
     suspend fun getYearlySavings(year: Int): Double {
         val savingAmount = repo.getYearlySavingAmount(year)

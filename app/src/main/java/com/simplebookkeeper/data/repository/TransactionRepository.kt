@@ -24,6 +24,10 @@ class TransactionRepository(
     suspend fun deleteTransaction(transaction: Transaction) =
         transactionDao.delete(transaction)
 
+    suspend fun deleteTransactionById(id: Long) {
+        transactionDao.deleteById(id)
+    }
+
     suspend fun getTransactionById(id: Long): Transaction? =
         transactionDao.getById(id)
 

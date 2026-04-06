@@ -21,6 +21,10 @@ interface TransactionDao {
     @Delete
     suspend fun delete(transaction: Transaction)
 
+    // 按ID删除
+    @Query("DELETE FROM transactions WHERE id = :id")
+    suspend fun deleteById(id: Long)
+
     // 按ID查询
     @Query("SELECT * FROM transactions WHERE id = :id")
     suspend fun getById(id: Long): Transaction?
