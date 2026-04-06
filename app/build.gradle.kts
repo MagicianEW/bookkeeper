@@ -13,8 +13,8 @@ android {
         applicationId = "com.simplebookkeeper"
         minSdk = 31
         targetSdk = 36
-        versionCode = 212
-        versionName = "0.2.12"
+        versionCode = 213
+        versionName = "0.2.13"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
