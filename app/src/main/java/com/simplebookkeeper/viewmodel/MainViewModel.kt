@@ -59,7 +59,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     val allCategories: StateFlow<List<Category>> =
         repo.getAllCategories()
-            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+            .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
     val categoriesMap: StateFlow<Map<Long, Category>> = allCategories
         .map { list -> list.associateBy { it.id } }
@@ -166,8 +166,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     // 分类管理
-    fun addCategory(category: Category) {
-        viewModelScope.launch { repo.addCategory(category) }
+    fun addCategory(category: Category, onComplete: (() -> Unit)? = null) {
+        viewModelScope.launch {
+            repo.addCategory(category)
+            onComplete?.invoke()
+        }
     }
 
     fun updateCategory(category: Category) {

@@ -105,7 +105,7 @@ fun SettingsScreen(
         uri?.let {
             scope.launch {
                 val success = importDatabase(context, it)
-                syncMessage = if (success) "导入成功，请重启应用" else "导入失败，文件格式不正确"
+                syncMessage = if (success) "✅ 导入成功，数据已更新" else "❌ 导入失败，文件格式不正确"
             }
         }
     }
@@ -710,6 +710,13 @@ suspend fun exportDatabase(context: Context, uri: Uri) {
 
 suspend fun importDatabase(context: Context, uri: Uri): Boolean {
     return try {
+        // 先关闭数据库连接，确保 Room 释放文件锁
+        try {
+            AppDatabase.getInstance(context).close()
+        } catch (e: Exception) {
+            AppLogger.w("SettingsScreen", "关闭数据库失败: ${e.message}")
+        }
+
         val dbFile = context.getDatabasePath(AppDatabase.DB_NAME)
         val tempFile = File(context.cacheDir, "import_temp.db")
         context.contentResolver.openInputStream(uri)?.use { input ->
@@ -724,8 +731,10 @@ suspend fun importDatabase(context: Context, uri: Uri): Boolean {
         }
         tempFile.copyTo(dbFile, overwrite = true)
         tempFile.delete()
+        AppLogger.i("SettingsScreen", "导入成功: ${dbFile.absolutePath}, size=${dbFile.length()}")
         true
     } catch (e: Exception) {
+        AppLogger.e("SettingsScreen", "导入失败", e)
         false
     }
 }

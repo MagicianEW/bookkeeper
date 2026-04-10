@@ -13,12 +13,24 @@ android {
         applicationId = "com.simplebookkeeper"
         minSdk = 31
         targetSdk = 36
-        versionCode = 213
-        versionName = "0.2.13"
+        versionCode = 214
+        versionName = "0.2.14"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    signingConfigs {
+        create("projectDebug") {
+            storeFile = file("../debug.keystore")
+            storePassword = "bookkeeper"
+            keyAlias = "bookkeeper"
+            keyPassword = "bookkeeper"
+        }
+    }
+
     buildTypes {
+        debug {
+            signingConfig = signingConfigs.getByName("projectDebug")
+        }
         release {
             isMinifyEnabled = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")

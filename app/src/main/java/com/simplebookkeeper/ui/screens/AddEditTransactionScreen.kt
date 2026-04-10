@@ -2,12 +2,13 @@ package com.simplebookkeeper.ui.screens
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowBack
@@ -33,7 +34,7 @@ import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun AddEditTransactionScreen(
     viewModel: MainViewModel,
@@ -125,6 +126,7 @@ fun AddEditTransactionScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
+                .verticalScroll(rememberScrollState())
                 .padding(16.dp)
         ) {
             // 收入/支出切换
@@ -192,27 +194,28 @@ fun AddEditTransactionScreen(
             // 分类选择
             Text("分类", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(modifier = Modifier.height(8.dp))
-            LazyVerticalGrid(
-                columns = GridCells.Fixed(4),
-                modifier = Modifier.heightIn(max = 200.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 240.dp)
+                    .verticalScroll(rememberScrollState())
             ) {
-                items(filteredCategories) { category ->
-                    CategoryChip(
-                        category = category,
-                        selected = selectedCategoryId == category.id,
-                        onClick = { selectedCategoryId = category.id }
-                    )
-                }
-                // 末尾添加"＋"按钮
-                item {
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    filteredCategories.forEach { category ->
+                        CategoryChip(
+                            category = category,
+                            selected = selectedCategoryId == category.id,
+                            onClick = { selectedCategoryId = category.id }
+                        )
+                    }
+                    // 末尾添加"＋"按钮
                     Surface(
                         shape = RoundedCornerShape(8.dp),
                         color = MaterialTheme.colorScheme.surfaceVariant,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { showAddCategoryDialog = true }
+                        modifier = Modifier.clickable { showAddCategoryDialog = true }
                     ) {
                         Box(contentAlignment = Alignment.Center, modifier = Modifier.padding(8.dp)) {
                             Icon(
@@ -335,13 +338,15 @@ fun AddEditTransactionScreen(
             confirmButton = {
                 TextButton(
                     onClick = {
-                        val name = newCategoryName.trim()
-                        if (name.isNotEmpty()) {
-                            val newCategory = com.simplebookkeeper.data.model.Category(
-                                name = name,
+                        val catName = newCategoryName.trim()
+                        if (catName.isNotEmpty()) {
+                            val newCat = com.simplebookkeeper.data.model.Category(
+                                name = catName,
                                 type = selectedType
                             )
-                            viewModel.addCategory(newCategory)
+                            viewModel.addCategory(newCat)
+                            showAddCategoryDialog = false
+                            newCategoryName = ""
                         }
                         showAddCategoryDialog = false
                         newCategoryName = ""
@@ -412,10 +417,10 @@ fun CategoryChip(category: Category, selected: Boolean, onClick: () -> Unit) {
         color = if (selected) MaterialTheme.colorScheme.primaryContainer
         else MaterialTheme.colorScheme.surfaceVariant,
         modifier = Modifier
-            .fillMaxWidth()
+            .defaultMinSize(minWidth = 72.dp)
             .clickable { onClick() }
     ) {
-        Box(contentAlignment = Alignment.Center, modifier = Modifier.padding(8.dp)) {
+        Box(contentAlignment = Alignment.Center, modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
             Text(
                 text = category.name,
                 fontSize = 12.sp,
