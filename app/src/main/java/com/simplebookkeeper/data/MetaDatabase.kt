@@ -54,6 +54,14 @@ abstract class MetaDatabase : RoomDatabase() {
             }
         }
 
+        /**
+         * 清除单例引用（导入数据覆盖文件后调用，使下次 getInstance 指向新文件）
+         */
+        fun clearInstance() {
+            INSTANCE?.close()
+            INSTANCE = null
+        }
+
         fun defaultCategories(): List<Category> = listOf(
             // 支出分类
             Category(name = "餐饮", type = TransactionType.EXPENSE, icon = "restaurant", isDefault = true, sortOrder = 1),

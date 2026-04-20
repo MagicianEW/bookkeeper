@@ -73,16 +73,19 @@ object DataExporter {
             val zipIn = ZipInputStream(BufferedInputStream(FileInputStream(zipFile)))
             var entry = zipIn.nextEntry
             var importedCount = 0
+            var importedMeta = false
 
             while (entry != null) {
                 val entryName = entry.name
 
                 if (entryName == META_DB_NAME) {
-                    // meta.db → bookkeeper_meta.db
+                    // 关闭旧连接并清理单例，指向新文件
+                    MetaDatabase.clearInstance()
                     val destFile = DatabaseManager.getMetaDbFile(context)
                     extractFromZip(zipIn, destFile)
                     AppLogger.i(TAG, "导入 meta.db")
                     importedCount++
+                    importedMeta = true
                 } else if (entryName.matches(Regex("\\d{4}\\.db"))) {
                     // YYYY.db → bookkeeper_YYYY.db
                     val year = entryName.removeSuffix(".db").toIntOrNull()

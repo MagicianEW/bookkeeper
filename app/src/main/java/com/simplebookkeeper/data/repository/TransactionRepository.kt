@@ -19,10 +19,11 @@ import java.util.Calendar
  */
 class TransactionRepository(
     private val context: Context,
-    private val metaDb: MetaDatabase
+    metaDb: MetaDatabase // kept for constructor compatibility; categoryDao uses MetaDatabase.getInstance() dynamically
 ) {
 
-    private val categoryDao: CategoryDao get() = metaDb.categoryDao()
+    // 每次调用都从 MetaDatabase 获取当前实例，避免 clearInstance() 后仍持有关闭的旧连接
+    private val categoryDao: CategoryDao get() = MetaDatabase.getInstance(context).categoryDao()
 
     // ——— 账目操作 ———
 
