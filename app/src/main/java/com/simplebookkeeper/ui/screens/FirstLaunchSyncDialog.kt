@@ -16,7 +16,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.simplebookkeeper.BookkeeperApp
-import com.simplebookkeeper.data.AppDatabase
+
 import com.simplebookkeeper.data.repository.WebDavConfig
 import com.simplebookkeeper.sync.SyncResult
 import com.simplebookkeeper.sync.SyncWorker
@@ -128,8 +128,7 @@ fun FirstLaunchSyncDialog(
                         step = 2
                         scope.launch {
                             val config = WebDavConfig(webDavUrl.trim(), webDavUsername.trim(), webDavPassword, true)
-                            val dbFile = context.getDatabasePath(AppDatabase.DB_NAME)
-                            val result = app.webDavManager.download(config, dbFile)
+                            val result = app.webDavManager.downloadMulti(config, app.dbManager)
                             when (result) {
                                 is SyncResult.Success -> {
                                     // 保存配置并启动后台同步

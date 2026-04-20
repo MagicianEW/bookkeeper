@@ -372,7 +372,8 @@ fun AddEditTransactionScreen(
             confirmButton = {
                 TextButton(
                     onClick = {
-                        viewModel.deleteTransactionById(transactionId) {
+                        val year = java.util.Calendar.getInstance().apply { time = selectedDate }.get(java.util.Calendar.YEAR)
+                        viewModel.deleteTransactionById(transactionId, year) {
                             onBack()
                         }
                         showDeleteDialog = false

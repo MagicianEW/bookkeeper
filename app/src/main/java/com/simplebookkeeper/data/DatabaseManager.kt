@@ -1,139 +1,238 @@
 package com.simplebookkeeper.data
 
 import android.content.Context
+import android.database.sqlite.SQLiteDatabase
+import com.simplebookkeeper.data.dao.CategoryDao
 import com.simplebookkeeper.data.dao.TransactionDao
+import com.simplebookkeeper.data.model.PaymentMethod
+import com.simplebookkeeper.data.model.Transaction
+import com.simplebookkeeper.data.model.TransactionType
 import com.simplebookkeeper.util.AppLogger
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.withContext
 import java.io.File
 import java.util.Calendar
+import java.util.concurrent.ConcurrentHashMap
 
 /**
- * 管理按年拆分的交易数据库实例
- * 提供 LRU 缓存，避免同时打开过多数据库连接
+ * 数据库管理器 — 按年拆分架构核心
+ *
+ * 职责：
+ * 1. 管理所有年份数据库实例（懒加载）
+ * 2. 检测并执行首次迁移（旧单库 → 多库）
+ * 3. 提供统一的数据访问接口
+ * 4. 自动创建新年份数据库
  */
-object DatabaseManager {
+class DatabaseManager(private val context: Context) {
 
-    private const val TAG = "DatabaseManager"
-    private const val DB_PREFIX = "bookkeeper_"
-    private const val DB_SUFFIX = ".db"
-    private const val MAX_CACHE_SIZE = 3 // 最多同时缓存的年库数量
+    companion object {
+        private const val TAG = "DatabaseManager"
+        private const val OLD_DB_NAME = "bookkeeper.db"
+        private const val MIGRATION_FLAG = "db_migration_done_v2"
 
-    private val mutex = Mutex()
-    private val cache = linkedMapOf<Int, YearDatabase>() // LinkedHashMap 保持插入顺序，支持 LRU
+        @Volatile
+        private var GLOBAL_INSTANCE: DatabaseManager? = null
 
-    /**
-     * 获取指定年份的数据库实例
-     * 如果缓存未命中则创建新实例，缓存满时淘汰最旧的
-     */
-    suspend fun getYearDb(context: Context, year: Int): YearDatabase = mutex.withLock {
-        cache[year]?.let { return@withLock it }
+        fun getMetaDbFile(c: Context): File = c.getDatabasePath(MetaDatabase.DB_NAME)
 
-        // LRU 淘汰：移除最旧的条目
-        while (cache.size >= MAX_CACHE_SIZE) {
-            val oldest = cache.keys.first()
-            val db = cache.remove(oldest)
-            db?.close()
-            AppLogger.d(TAG, "LRU 淘汰年库: $oldest")
+        fun getYearDbFileStatic(c: Context, year: Int): File = c.getDatabasePath(YearDatabase.dbName(year))
+
+        fun getAllYearDbFilesStatic(c: Context): List<File> {
+            val dir = c.getDatabasePath("_dummy_").parentFile
+                ?: c.filesDir.resolve("../databases").takeIf { it.exists() }
+                ?: return emptyList()
+            return dir.listFiles { _: File, name: String ->
+                name.startsWith("bookkeeper_") && name.matches(Regex("bookkeeper_\\d{4}\\.db$"))
+            }?.toList() ?: emptyList()
         }
 
-        val db = YearDatabase.create(context, year)
-        cache[year] = db
-        AppLogger.d(TAG, "创建/缓存年库: $year")
-        db
+        fun closeAll() { GLOBAL_INSTANCE?.close() }
     }
 
-    /**
-     * 获取指定年份的 TransactionDao
-     */
-    suspend fun getTransactionDao(context: Context, year: Int): TransactionDao {
-        return getYearDb(context, year).transactionDao()
-    }
+    init { GLOBAL_INSTANCE = this }
 
-    /**
-     * 获取当前年份，如果对应数据库不存在则自动创建
-     */
-    suspend fun ensureCurrentYearDb(context: Context): YearDatabase {
-        val year = Calendar.getInstance().get(Calendar.YEAR)
-        return getYearDb(context, year)
-    }
+    private val _metaDb: MetaDatabase by lazy { MetaDatabase.getInstance(context) }
+    val metaDb: MetaDatabase get() = _metaDb
+    val categoryDao: CategoryDao get() = _metaDb.categoryDao()
 
-    /**
-     * 获取本地所有已存在的年份列表（通过扫描数据库文件）
-     */
-    fun getAvailableYears(context: Context): List<Int> {
-        val dbDir = context.getDatabasePath("dummy").parentFile ?: return emptyList()
-        return dbDir.listFiles()
-            ?.filter { it.name.startsWith(DB_PREFIX) && it.name.endsWith(DB_SUFFIX) }
-            ?.mapNotNull {
-                val yearStr = it.name.removePrefix(DB_PREFIX).removeSuffix(DB_SUFFIX)
-                yearStr.toIntOrNull()
+    private val yearDbs = ConcurrentHashMap<Int, YearDatabase>()
+    private val _migrationState = MutableStateFlow<MigrationState>(MigrationState.Idle)
+    val migrationState = _migrationState.asStateFlow()
+
+    suspend fun initialize() {
+        withContext(Dispatchers.IO) {
+            getOrCreateYearDb(currentYear())
+            if (needsMigration()) {
+                _migrationState.value = MigrationState.InProgress
+                performMigration()
+                _migrationState.value = MigrationState.Done
+            } else {
+                _migrationState.value = MigrationState.Done
             }
-            ?.sortedDescending()
-            ?: emptyList()
+        }
     }
 
-    /**
-     * 获取本地所有年份数据库文件
-     */
-    fun getAllYearDbFiles(context: Context): List<File> {
-        val dbDir = context.getDatabasePath("dummy").parentFile ?: return emptyList()
-        return dbDir.listFiles()
-            ?.filter { it.name.startsWith(DB_PREFIX) && it.name.endsWith(DB_SUFFIX) }
-            ?.sortedBy { it.name }
-            ?: emptyList()
+    fun currentYear(): Int = Calendar.getInstance().get(Calendar.YEAR)
+
+    fun getYearDao(year: Int): TransactionDao = getOrCreateYearDb(year).transactionDao()
+
+    private fun getOrCreateYearDb(year: Int): YearDatabase =
+        yearDbs.getOrPut(year) {
+            AppLogger.i(TAG, "创建年份数据库: $year")
+            YearDatabase.create(context, year)
+        }
+
+    fun getCurrentYearDao(): TransactionDao = getYearDao(currentYear())
+
+    fun getAllYears(): List<Int> {
+        val dir = context.getDatabasePath("_dummy_").parentFile
+            ?: context.filesDir.resolve("../databases").takeIf { it.exists() }
+            ?: return emptyList()
+        return dir.listFiles { _: File, name: String ->
+            name.startsWith("bookkeeper_") && name.matches(Regex("bookkeeper_\\d{4}\\.db$"))
+        }?.mapNotNull { it.name.removePrefix("bookkeeper_").removeSuffix(".db").toIntOrNull() }
+            ?.sortedDescending() ?: emptyList()
     }
 
-    /**
-     * 获取指定年份的数据库文件
-     */
-    fun getYearDbFile(context: Context, year: Int): File {
-        return context.getDatabasePath(YearDatabase.dbName(year))
+    // 实例级文件路径（供 WebDavManager syncMulti 使用）
+    val metaDbFile: File get() = context.getDatabasePath(MetaDatabase.DB_NAME)
+    fun getYearDbFile(year: Int): File = context.getDatabasePath(YearDatabase.dbName(year))
+    fun getAllYearDbFiles(): List<File> = getAllYears().map { getYearDbFile(it) }
+
+    // 数据操作
+    suspend fun insertTransaction(t: Transaction): Long =
+        getYearDao(yearFromDate(t.date.time)).insert(t)
+
+    suspend fun updateTransaction(t: Transaction) =
+        getYearDao(yearFromDate(t.date.time)).update(t)
+
+    suspend fun deleteTransaction(t: Transaction) =
+        getYearDao(yearFromDate(t.date.time)).delete(t)
+
+    suspend fun deleteTransactionById(id: Long, year: Int) =
+        getYearDao(year).deleteById(id)
+
+    suspend fun getTransactionById(id: Long): Transaction? =
+        getAllYears().firstNotNullOfOrNull { year -> getYearDao(year).getById(id) }
+
+    // 迁移
+    private fun needsMigration(): Boolean {
+        val prefs = context.getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
+        if (prefs.getBoolean(MIGRATION_FLAG, false)) return false
+        return context.getDatabasePath(OLD_DB_NAME).exists()
     }
 
-    /**
-     * 检查指定年份的数据库文件是否存在
-     */
-    fun yearDbExists(context: Context, year: Int): Boolean {
-        return getYearDbFile(context, year).exists()
+    private suspend fun performMigration() = withContext(Dispatchers.IO) {
+        val oldFile = context.getDatabasePath(OLD_DB_NAME)
+        if (!oldFile.exists()) return@withContext
+        AppLogger.i(TAG, "迁移: ${oldFile.absolutePath}")
+
+        try {
+            val oldDb = SQLiteDatabase.openDatabase(oldFile.absolutePath, null, SQLiteDatabase.OPEN_READONLY)
+
+            // ── 迁移分类 ──
+            val catCursor = oldDb.rawQuery("SELECT * FROM categories", null)
+            val categories = mutableListOf<com.simplebookkeeper.data.model.Category>()
+            while (catCursor.moveToNext()) {
+                val id = catCursor.getLong(catCursor.getColumnIndexOrThrow("id"))
+                val name = catCursor.getString(catCursor.getColumnIndexOrThrow("name"))
+                val typeStr = catCursor.getString(catCursor.getColumnIndexOrThrow("type"))
+                val icon = catCursor.getString(catCursor.getColumnIndexOrThrow("icon")) ?: ""
+                val isDefault = catCursor.getInt(catCursor.getColumnIndexOrThrow("isDefault")) == 1
+                val sortOrder = catCursor.getInt(catCursor.getColumnIndexOrThrow("sortOrder"))
+                categories.add(
+                    com.simplebookkeeper.data.model.Category(
+                        id = id, name = name,
+                        type = TransactionType.valueOf(typeStr),
+                        icon = icon, isDefault = isDefault, sortOrder = sortOrder
+                    )
+                )
+            }
+            catCursor.close()
+            if (categories.isNotEmpty()) {
+                categoryDao.insertAll(categories)
+                AppLogger.i(TAG, "迁移分类: ${categories.size} 条")
+            }
+
+            // ── 迁移交易 ──
+            val cursor = oldDb.rawQuery("SELECT * FROM transactions ORDER BY date ASC", null)
+            val transactions = mutableListOf<Transaction>()
+
+            while (cursor.moveToNext()) {
+                val id = cursor.getLong(cursor.getColumnIndexOrThrow("id"))
+                val typeStr = cursor.getString(cursor.getColumnIndexOrThrow("type"))
+                val amount = cursor.getDouble(cursor.getColumnIndexOrThrow("amount"))
+                val categoryId = cursor.getLong(cursor.getColumnIndexOrThrow("categoryId"))
+                val paymentStr = cursor.getString(cursor.getColumnIndexOrThrow("paymentMethod"))
+                val note = cursor.getString(cursor.getColumnIndexOrThrow("note")) ?: ""
+                val dateMs = cursor.getLong(cursor.getColumnIndexOrThrow("date"))
+                val createdAt = cursor.getLong(cursor.getColumnIndexOrThrow("createdAt"))
+                val updatedAt = cursor.getLong(cursor.getColumnIndexOrThrow("updatedAt"))
+
+                transactions.add(
+                    Transaction(
+                        id = id,
+                        type = TransactionType.valueOf(typeStr),
+                        amount = amount,
+                        categoryId = categoryId,
+                        paymentMethod = PaymentMethod.valueOf(paymentStr),
+                        note = note,
+                        date = java.util.Date(dateMs),
+                        createdAt = createdAt,
+                        updatedAt = updatedAt
+                    )
+                )
+            }
+            cursor.close()
+            oldDb.close()
+
+            AppLogger.i(TAG, "旧库读取: ${transactions.size} 条")
+
+            val byYear = transactions.groupBy { yearFromDate(it.date.time) }
+            for ((year, txns) in byYear) {
+                getOrCreateYearDb(year)
+                val dao = getYearDao(year)
+                txns.forEach { dao.insert(it) }
+                AppLogger.i(TAG, "写入 $year: ${txns.size} 条")
+            }
+
+            val total = byYear.values.sumOf { it.size }
+            if (total != transactions.size)
+                throw IllegalStateException("迁移验证失败")
+
+            val backupFile = File(oldFile.parentFile, "bookkeeper.db.bak")
+            oldFile.copyTo(backupFile, overwrite = true)
+            oldFile.delete()
+            AppLogger.i(TAG, "备份: ${backupFile.name}")
+
+            context.getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
+                .edit().putBoolean(MIGRATION_FLAG, true).apply()
+            AppLogger.i(TAG, "迁移完成")
+
+        } catch (e: Exception) {
+            AppLogger.e(TAG, "迁移失败", e)
+            context.getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
+                .edit().putBoolean(MIGRATION_FLAG, true).apply()
+        }
     }
 
-    /**
-     * 关闭所有缓存的数据库连接
-     */
-    suspend fun closeAll() = mutex.withLock {
-        cache.values.forEach { it.close() }
-        cache.clear()
-        AppLogger.d(TAG, "关闭所有年库连接")
+    private fun yearFromDate(timeMs: Long): Int {
+        val cal = Calendar.getInstance()
+        cal.timeInMillis = timeMs
+        return cal.get(Calendar.YEAR)
     }
 
-    /**
-     * 关闭指定年份的数据库连接
-     */
-    suspend fun closeYear(year: Int) = mutex.withLock {
-        cache.remove(year)?.close()
+    fun close() {
+        yearDbs.values.forEach { it.close() }
+        yearDbs.clear()
     }
 
-    /**
-     * 获取 meta 数据库文件
-     */
-    fun getMetaDbFile(context: Context): File {
-        return context.getDatabasePath(MetaDatabase.DB_NAME)
-    }
-
-    /**
-     * 检查旧版单库文件是否存在
-     */
-    fun legacyDbExists(context: Context): Boolean {
-        val file = context.getDatabasePath(AppDatabase.DB_NAME)
-        return file.exists() && file.length() > 0
-    }
-
-    /**
-     * 检查旧版备份文件是否存在
-     */
-    fun legacyBackupExists(context: Context): Boolean {
-        val file = File(context.getDatabasePath(AppDatabase.DB_NAME).absolutePath + ".bak")
-        return file.exists()
+    sealed class MigrationState {
+        object Idle : MigrationState()
+        object InProgress : MigrationState()
+        object Done : MigrationState()
+        data class Error(val message: String) : MigrationState()
     }
 }

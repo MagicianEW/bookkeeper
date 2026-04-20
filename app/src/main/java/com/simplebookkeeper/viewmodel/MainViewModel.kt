@@ -87,6 +87,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val savingsBalance: StateFlow<Double> = app.settingsRepository.savingsBalance
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0.0)
 
+    // 数据库迁移状态
+    val migrationState = app.dbManager.migrationState
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000),
+            com.simplebookkeeper.data.DatabaseManager.MigrationState.Idle)
+
     fun setDisplayMonth(year: Int, month: Int) {
         _displayYear.value = year
         _displayMonth.value = month
@@ -96,7 +101,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun addTransaction(transaction: Transaction, onDone: () -> Unit = {}) {
         viewModelScope.launch {
             repo.addTransaction(transaction)
-            // 记账后触发同步
             val config = app.settingsRepository.webDavConfig.first()
             if (config.enabled) SyncWorker.syncNow(app)
             onDone()
@@ -149,9 +153,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     // 根据ID删除账目
-    fun deleteTransactionById(id: Long, onDone: () -> Unit = {}) {
+    fun deleteTransactionById(id: Long, year: Int, onDone: () -> Unit = {}) {
         viewModelScope.launch {
-            repo.deleteTransactionById(id)
+            repo.deleteTransactionById(id, year)
             val config = app.settingsRepository.webDavConfig.first()
             if (config.enabled) SyncWorker.syncNow(app)
             onDone()
@@ -181,18 +185,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch { repo.deleteCategory(category) }
     }
 
-    // 手动同步（多文件版本）
+    // 手动同步（多文件）
     fun syncNow(config: WebDavConfig, onResult: (SyncResult) -> Unit) {
         viewModelScope.launch {
-            val result = app.webDavManager.syncMultiFile(config)
+            val result = app.webDavManager.syncMulti(config, app.dbManager)
             onResult(result)
         }
     }
 
-    // 从云端下载（用于冲突解决）
+    // 下载云端数据库（冲突解决/首次恢复）
     fun downloadFromCloud(config: WebDavConfig, onResult: (SyncResult) -> Unit) {
         viewModelScope.launch {
-            val result = app.webDavManager.downloadAll(config)
+            val result = app.webDavManager.downloadMulti(config, app.dbManager)
             onResult(result)
         }
     }
@@ -208,4 +212,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     // 按ID查询单条（编辑时回填数据）
     suspend fun getTransactionById(id: Long): Transaction? =
         repo.getTransactionById(id)
+
+    // 获取某年份所有记录数（用于删除确认等场景）
+    fun getTransactionsByYearSnapshot(year: Int): kotlinx.coroutines.flow.Flow<List<Transaction>> =
+        repo.getTransactionsByYear(year)
 }

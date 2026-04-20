@@ -1,7 +1,6 @@
 package com.simplebookkeeper.sync
 
 import android.content.Context
-import androidx.work.*
 import com.simplebookkeeper.data.DatabaseManager
 import com.simplebookkeeper.data.repository.SettingsRepository
 import com.simplebookkeeper.util.AppLogger
@@ -10,8 +9,8 @@ import java.util.concurrent.TimeUnit
 
 class SyncWorker(
     context: Context,
-    params: WorkerParameters
-) : CoroutineWorker(context, params) {
+    params: androidx.work.WorkerParameters
+) : androidx.work.CoroutineWorker(context, params) {
 
     override suspend fun doWork(): Result {
         val settingsRepo = SettingsRepository(applicationContext)
@@ -19,37 +18,37 @@ class SyncWorker(
 
         if (!config.enabled || config.url.isBlank()) return Result.success()
 
+        val dbManager = DatabaseManager(applicationContext)
         val webDavManager = WebDavManager(applicationContext)
 
-        return when (val result = webDavManager.syncMultiFile(config)) {
-            is SyncResult.Success -> {
-                AppLogger.i(TAG, "doWork: 多文件同步成功")
-                Result.success()
-            }
-            is SyncResult.Error -> {
-                AppLogger.w(TAG, "doWork: 同步失败 - ${result.message}")
-                Result.retry()
-            }
-            is SyncResult.Conflict -> {
-                // 单文件冲突，自动以本地为准上传
-                AppLogger.i(TAG, "doWork: 检测到冲突，以本地数据为准")
-                val uploadResult = webDavManager.downloadAll(config)
-                when (uploadResult) {
+        AppLogger.i(TAG, "doWork: 多文件同步")
+
+        // 检查云端是否有数据（通过检查远程文件列表）
+        val remoteFiles = webDavManager.getRemoteFileList(config)
+        val hasRemoteData = remoteFiles.any { it.endsWith(".db") }
+        val hasLocalData = dbManager.getAllYears().isNotEmpty() || dbManager.metaDbFile.exists()
+
+        when {
+            // 云端有数据，本地无数据 → 下载
+            hasRemoteData && !hasLocalData -> {
+                AppLogger.i(TAG, "doWork: 云端有数据，本地无数据，下载")
+                return when (val result = webDavManager.downloadMulti(config, dbManager)) {
                     is SyncResult.Success -> Result.success()
                     is SyncResult.Error -> Result.retry()
-                    else -> Result.success()
+                    is SyncResult.Conflict -> Result.success()
+                    is SyncResult.MultiConflict -> Result.success()
                 }
             }
-            is SyncResult.MultiConflict -> {
-                // 多文件冲突，默认以本地为准
-                AppLogger.i(TAG, "doWork: 检测到${result.conflictFiles.size}个文件冲突，以本地数据为准")
-                val uploadResult = webDavManager.syncMultiFile(config)
-                when (uploadResult) {
+            // 本地有数据 → 上传同步
+            hasLocalData -> {
+                return when (val result = webDavManager.syncMulti(config, dbManager)) {
                     is SyncResult.Success -> Result.success()
                     is SyncResult.Error -> Result.retry()
-                    else -> Result.success()
+                    is SyncResult.Conflict -> Result.success()
+                    is SyncResult.MultiConflict -> Result.success()
                 }
             }
+            else -> return Result.success()
         }
     }
 
@@ -58,36 +57,41 @@ class SyncWorker(
         const val WORK_NAME = "webdav_sync"
 
         fun schedule(context: Context) {
-            val constraints = Constraints.Builder()
-                .setRequiredNetworkType(NetworkType.CONNECTED)
+            val constraints = androidx.work.Constraints.Builder()
+                .setRequiredNetworkType(androidx.work.NetworkType.CONNECTED)
                 .build()
 
-            val request = PeriodicWorkRequestBuilder<SyncWorker>(15, TimeUnit.MINUTES)
+            val request = androidx.work.PeriodicWorkRequestBuilder<SyncWorker>(
+                15, TimeUnit.MINUTES
+            )
                 .setConstraints(constraints)
-                .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 1, TimeUnit.MINUTES)
+                .setBackoffCriteria(
+                    androidx.work.BackoffPolicy.EXPONENTIAL,
+                    1, TimeUnit.MINUTES
+                )
                 .build()
 
-            WorkManager.getInstance(context).enqueueUniquePeriodicWork(
+            androidx.work.WorkManager.getInstance(context).enqueueUniquePeriodicWork(
                 WORK_NAME,
-                ExistingPeriodicWorkPolicy.KEEP,
+                androidx.work.ExistingPeriodicWorkPolicy.KEEP,
                 request
             )
         }
 
         fun cancel(context: Context) {
-            WorkManager.getInstance(context).cancelUniqueWork(WORK_NAME)
+            androidx.work.WorkManager.getInstance(context).cancelUniqueWork(WORK_NAME)
         }
 
         fun syncNow(context: Context) {
-            val constraints = Constraints.Builder()
-                .setRequiredNetworkType(NetworkType.CONNECTED)
+            val constraints = androidx.work.Constraints.Builder()
+                .setRequiredNetworkType(androidx.work.NetworkType.CONNECTED)
                 .build()
 
-            val request = OneTimeWorkRequestBuilder<SyncWorker>()
+            val request = androidx.work.OneTimeWorkRequestBuilder<SyncWorker>()
                 .setConstraints(constraints)
                 .build()
 
-            WorkManager.getInstance(context).enqueue(request)
+            androidx.work.WorkManager.getInstance(context).enqueue(request)
         }
     }
 }

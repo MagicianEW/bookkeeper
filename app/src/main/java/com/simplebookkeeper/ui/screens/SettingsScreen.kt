@@ -312,7 +312,7 @@ fun SettingsScreen(
                             }
                             isSyncing = true
                             syncMessage = null
-                            when (val result = app.webDavManager.syncMultiFile(config)) {
+                            when (val result = app.webDavManager.syncMulti(config, app.dbManager)) {
                                 is SyncResult.Success -> syncMessage = "✅ 同步成功"
                                 is SyncResult.Error -> syncMessage = "❌ 同步失败: ${result.message}"
                                 is SyncResult.Conflict -> {
@@ -477,13 +477,13 @@ fun SettingsScreen(
                     scope.launch {
                         val cfg = conflictConfig ?: return@launch
                         if (useLocal) {
-                            when (val result = app.webDavManager.syncMultiFile(cfg)) {
+                            when (val result = app.webDavManager.syncMulti(cfg, app.dbManager)) {
                                 is SyncResult.Success -> syncMessage = "✅ 已以本地数据为准同步到云端"
                                 is SyncResult.Error -> syncMessage = "❌ 同步失败: ${result.message}"
                                 else -> {}
                             }
                         } else {
-                            when (val result = app.webDavManager.downloadAll(cfg)) {
+                            when (val result = app.webDavManager.downloadMulti(cfg, app.dbManager)) {
                                 is SyncResult.Success -> syncMessage = "✅ 已以云端数据为准覆盖本地"
                                 is SyncResult.Error -> syncMessage = "❌ 下载失败: ${result.message}"
                                 else -> {}
@@ -513,13 +513,13 @@ fun SettingsScreen(
                     scope.launch {
                         val cfg = conflictConfig ?: return@launch
                         if (useLocal) {
-                            when (val result = app.webDavManager.syncMultiFile(cfg)) {
+                            when (val result = app.webDavManager.syncMulti(cfg, app.dbManager)) {
                                 is SyncResult.Success -> syncMessage = "✅ 已以本地数据为准覆盖云端"
                                 is SyncResult.Error -> syncMessage = "❌ 上传失败: ${result.message}"
                                 else -> {}
                             }
                         } else {
-                            when (val result = app.webDavManager.downloadAll(cfg)) {
+                            when (val result = app.webDavManager.downloadMulti(cfg, app.dbManager)) {
                                 is SyncResult.Success -> syncMessage = "✅ 已以云端数据为准覆盖本地"
                                 is SyncResult.Error -> syncMessage = "❌ 下载失败: ${result.message}"
                                 else -> {}
