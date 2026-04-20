@@ -21,9 +21,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.simplebookkeeper.BookkeeperApp
 import com.simplebookkeeper.data.AppDatabase
+import com.simplebookkeeper.data.DataExporter
+import com.simplebookkeeper.data.DatabaseManager
 import com.simplebookkeeper.data.model.Category
 import com.simplebookkeeper.data.model.TransactionType
 import com.simplebookkeeper.data.repository.WebDavConfig
+import com.simplebookkeeper.sync.ConflictFile
 import com.simplebookkeeper.sync.SyncResult
 import com.simplebookkeeper.sync.SyncWorker
 import com.simplebookkeeper.util.AppLogger
@@ -69,19 +72,29 @@ fun SettingsScreen(
 
     // 冲突解决对话框状态
     var showConflictDialog by remember { mutableStateOf(false) }
-    var conflictData by remember { mutableStateOf<Pair<Long, Long>?>(null) } // (localTime, remoteTime)
-    var conflictConfig by remember { mutableStateOf<WebDavConfig?>(null) } // 冲突时使用的配置
+    var conflictData by remember { mutableStateOf<Pair<Long, Long>?>(null) }
+    var conflictConfig by remember { mutableStateOf<WebDavConfig?>(null) }
+    var multiConflictFiles by remember { mutableStateOf<List<ConflictFile>>(emptyList()) }
 
     val allCategories by viewModel.allCategories.collectAsState()
 
-    // 导出文件选择器
+    // 导出文件选择器（导出为 zip）
     val exportLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.CreateDocument("application/octet-stream")
+        contract = ActivityResultContracts.CreateDocument("application/zip")
     ) { uri ->
         uri?.let {
             scope.launch {
-                exportDatabase(context, it)
-                syncMessage = "导出成功"
+                val tempFile = File(context.cacheDir, "bookkeeper_export.zip")
+                val success = DataExporter.exportToZip(context, tempFile)
+                if (success) {
+                    context.contentResolver.openOutputStream(uri)?.use { out ->
+                        tempFile.inputStream().use { it.copyTo(out) }
+                    }
+                    syncMessage = "✅ 导出成功"
+                } else {
+                    syncMessage = "❌ 导出失败"
+                }
+                tempFile.delete()
             }
         }
     }
@@ -98,13 +111,13 @@ fun SettingsScreen(
         }
     }
 
-    // 导入文件选择器
+    // 导入文件选择器（支持 zip 和 db）
     val importLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri ->
         uri?.let {
             scope.launch {
-                val success = importDatabase(context, it)
+                val success = importData(context, it)
                 syncMessage = if (success) "✅ 导入成功，数据已更新" else "❌ 导入失败，文件格式不正确"
             }
         }
@@ -288,7 +301,7 @@ fun SettingsScreen(
                 SettingsItem(
                     icon = Icons.Default.Sync,
                     title = if (isSyncing) "同步中..." else "立即同步",
-                    subtitle = if (isSyncing) "正在上传数据到云端，请稍候" else "将本地数据上传到云端",
+                    subtitle = if (isSyncing) "正在同步数据，请稍候" else "将本地数据同步到云端",
                     onClick = {
                         if (isSyncing) return@SettingsItem
                         scope.launch {
@@ -299,18 +312,42 @@ fun SettingsScreen(
                             }
                             isSyncing = true
                             syncMessage = null
-                            val dbFile = context.getDatabasePath(AppDatabase.DB_NAME)
-                            when (val result = app.webDavManager.sync(config, dbFile)) {
+                            when (val result = app.webDavManager.syncMultiFile(config)) {
                                 is SyncResult.Success -> syncMessage = "✅ 同步成功"
                                 is SyncResult.Error -> syncMessage = "❌ 同步失败: ${result.message}"
                                 is SyncResult.Conflict -> {
-                                    // 显示冲突解决对话框
                                     conflictData = result.localTime to result.remoteTime
                                     conflictConfig = config
+                                    multiConflictFiles = emptyList()
+                                    showConflictDialog = true
+                                }
+                                is SyncResult.MultiConflict -> {
+                                    conflictConfig = config
+                                    multiConflictFiles = result.conflictFiles
+                                    conflictData = null
                                     showConflictDialog = true
                                 }
                             }
                             isSyncing = false
+                        }
+                    }
+                )
+            }
+            // 清理旧版云端文件
+            item {
+                SettingsItem(
+                    icon = Icons.Default.CleaningServices,
+                    title = "清理旧版云端格式",
+                    subtitle = "删除云端旧版 bookkeeper.db（已迁移数据不受影响）",
+                    onClick = {
+                        scope.launch {
+                            val config = app.settingsRepository.webDavConfig.first()
+                            if (!config.enabled || config.url.isBlank()) {
+                                syncMessage = "请先配置 WebDAV"
+                                return@launch
+                            }
+                            val success = app.webDavManager.deleteRemoteLegacyFile(config)
+                            syncMessage = if (success) "✅ 旧版云端文件已清理" else "❌ 清理失败或文件不存在"
                         }
                     }
                 )
@@ -322,10 +359,10 @@ fun SettingsScreen(
                 SettingsItem(
                     icon = Icons.Default.Upload,
                     title = "导出数据",
-                    subtitle = "将数据库导出为 .db 文件",
+                    subtitle = "将所有数据库导出为 .zip 文件",
                     onClick = {
                         val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
-                        exportLauncher.launch("bookkeeper_$timestamp.db")
+                        exportLauncher.launch("bookkeeper_$timestamp.zip")
                     }
                 )
             }
@@ -333,7 +370,7 @@ fun SettingsScreen(
                 SettingsItem(
                     icon = Icons.Default.Download,
                     title = "导入数据",
-                    subtitle = "从 .db 文件恢复数据",
+                    subtitle = "从 .zip 或旧版 .db 文件恢复数据",
                     onClick = { importLauncher.launch("*/*") }
                 )
             }
@@ -431,43 +468,134 @@ fun SettingsScreen(
     }
 
     // 冲突解决对话框
-    if (showConflictDialog && conflictData != null) {
-        val (localTime, remoteTime) = conflictData!!
-        val dateFormat = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
-        ConflictResolveDialog(
-            localTimeStr = dateFormat.format(Date(localTime)),
-            remoteTimeStr = dateFormat.format(Date(remoteTime)),
-            onResolve = { useLocal ->
-                scope.launch {
-                    val cfg = conflictConfig ?: return@launch
-                    val dbFile = context.getDatabasePath(AppDatabase.DB_NAME)
-                    if (useLocal) {
-                        // 以本地为准，上传覆盖云端
-                        when (val result = app.webDavManager.upload(cfg, dbFile)) {
-                            is SyncResult.Success -> syncMessage = "✅ 已以本地数据为准覆盖云端"
-                            is SyncResult.Error -> syncMessage = "❌ 上传失败: ${result.message}"
-                            else -> {}
-                        }
-                    } else {
-                        // 以云端为准，下载覆盖本地
-                        when (val result = app.webDavManager.download(cfg, dbFile)) {
-                            is SyncResult.Success -> syncMessage = "✅ 已以云端数据为准覆盖本地"
-                            is SyncResult.Error -> syncMessage = "❌ 下载失败: ${result.message}"
-                            else -> {}
+    if (showConflictDialog) {
+        if (multiConflictFiles.isNotEmpty()) {
+            // 多文件冲突
+            MultiConflictResolveDialog(
+                conflictFiles = multiConflictFiles,
+                onResolve = { useLocal ->
+                    scope.launch {
+                        val cfg = conflictConfig ?: return@launch
+                        if (useLocal) {
+                            when (val result = app.webDavManager.syncMultiFile(cfg)) {
+                                is SyncResult.Success -> syncMessage = "✅ 已以本地数据为准同步到云端"
+                                is SyncResult.Error -> syncMessage = "❌ 同步失败: ${result.message}"
+                                else -> {}
+                            }
+                        } else {
+                            when (val result = app.webDavManager.downloadAll(cfg)) {
+                                is SyncResult.Success -> syncMessage = "✅ 已以云端数据为准覆盖本地"
+                                is SyncResult.Error -> syncMessage = "❌ 下载失败: ${result.message}"
+                                else -> {}
+                            }
                         }
                     }
+                    showConflictDialog = false
+                    conflictData = null
+                    conflictConfig = null
+                    multiConflictFiles = emptyList()
+                },
+                onDismiss = {
+                    showConflictDialog = false
+                    conflictData = null
+                    conflictConfig = null
+                    multiConflictFiles = emptyList()
                 }
-                showConflictDialog = false
-                conflictData = null
-                conflictConfig = null
-            },
-            onDismiss = {
-                showConflictDialog = false
-                conflictData = null
-                conflictConfig = null
-            }
-        )
+            )
+        } else if (conflictData != null) {
+            // 单文件冲突（兼容旧 UI）
+            val (localTime, remoteTime) = conflictData!!
+            val dateFormat = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
+            ConflictResolveDialog(
+                localTimeStr = dateFormat.format(Date(localTime)),
+                remoteTimeStr = dateFormat.format(Date(remoteTime)),
+                onResolve = { useLocal ->
+                    scope.launch {
+                        val cfg = conflictConfig ?: return@launch
+                        if (useLocal) {
+                            when (val result = app.webDavManager.syncMultiFile(cfg)) {
+                                is SyncResult.Success -> syncMessage = "✅ 已以本地数据为准覆盖云端"
+                                is SyncResult.Error -> syncMessage = "❌ 上传失败: ${result.message}"
+                                else -> {}
+                            }
+                        } else {
+                            when (val result = app.webDavManager.downloadAll(cfg)) {
+                                is SyncResult.Success -> syncMessage = "✅ 已以云端数据为准覆盖本地"
+                                is SyncResult.Error -> syncMessage = "❌ 下载失败: ${result.message}"
+                                else -> {}
+                            }
+                        }
+                    }
+                    showConflictDialog = false
+                    conflictData = null
+                    conflictConfig = null
+                },
+                onDismiss = {
+                    showConflictDialog = false
+                    conflictData = null
+                    conflictConfig = null
+                }
+            )
+        }
     }
+}
+
+// 多文件冲突解决对话框
+@Composable
+fun MultiConflictResolveDialog(
+    conflictFiles: List<ConflictFile>,
+    onResolve: (useLocal: Boolean) -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        icon = { Icon(Icons.Default.Sync, contentDescription = null) },
+        title = { Text("检测到多文件冲突", fontWeight = FontWeight.Bold) },
+        text = {
+            Column {
+                Text("以下 ${conflictFiles.size} 个文件本地与云端不一致：")
+                Spacer(modifier = Modifier.height(8.dp))
+                conflictFiles.forEach { cf ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            Icons.Default.Description,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp),
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(cf.fileName, fontWeight = FontWeight.Medium, fontSize = 13.sp)
+                    }
+                }
+                Spacer(modifier = Modifier.height(12.dp))
+                Text("请选择以哪端数据为准：", style = MaterialTheme.typography.bodySmall)
+            }
+        },
+        confirmButton = {
+            Column {
+                TextButton(
+                    onClick = { onResolve(true) },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("📱 以本地数据为准")
+                }
+                TextButton(
+                    onClick = { onResolve(false) },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("☁️ 以云端数据为准")
+                }
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("取消")
+            }
+        }
+    )
 }
 
 // 冲突解决对话框
@@ -699,40 +827,36 @@ fun AddCategoryDialog(onConfirm: (Category) -> Unit, onDismiss: () -> Unit) {
     )
 }
 
-// ——— 数据库导入导出 ———
+// ——— 数据导入导出 ———
 
-suspend fun exportDatabase(context: Context, uri: Uri) {
-    val dbFile = context.getDatabasePath(AppDatabase.DB_NAME)
-    context.contentResolver.openOutputStream(uri)?.use { out ->
-        dbFile.inputStream().use { it.copyTo(out) }
-    }
-}
-
-suspend fun importDatabase(context: Context, uri: Uri): Boolean {
+/**
+ * 导入数据：自动检测 zip 或 db 格式
+ */
+suspend fun importData(context: Context, uri: Uri): Boolean {
     return try {
-        // 先关闭数据库连接，确保 Room 释放文件锁
-        try {
-            AppDatabase.getInstance(context).close()
-        } catch (e: Exception) {
-            AppLogger.w("SettingsScreen", "关闭数据库失败: ${e.message}")
-        }
-
-        val dbFile = context.getDatabasePath(AppDatabase.DB_NAME)
-        val tempFile = File(context.cacheDir, "import_temp.db")
+        // 复制到临时文件
+        val tempFile = File(context.cacheDir, "import_temp")
         context.contentResolver.openInputStream(uri)?.use { input ->
             tempFile.outputStream().use { input.copyTo(it) }
         }
-        // 简单校验：SQLite文件头
-        val header = tempFile.readBytes().take(16)
-        val sqliteHeader = "SQLite format 3\u0000".toByteArray()
-        if (!header.toByteArray().contentEquals(sqliteHeader)) {
-            tempFile.delete()
-            return false
+
+        val success = when {
+            DataExporter.isZipFile(tempFile) -> {
+                AppLogger.i("SettingsScreen", "检测到 zip 格式，使用多文件导入")
+                DataExporter.importFromZip(context, tempFile)
+            }
+            DataExporter.isValidSqlite(tempFile) -> {
+                AppLogger.i("SettingsScreen", "检测到旧版 db 格式，使用迁移导入")
+                DataExporter.importLegacyDb(context, tempFile)
+            }
+            else -> {
+                AppLogger.w("SettingsScreen", "无法识别的文件格式")
+                false
+            }
         }
-        tempFile.copyTo(dbFile, overwrite = true)
+
         tempFile.delete()
-        AppLogger.i("SettingsScreen", "导入成功: ${dbFile.absolutePath}, size=${dbFile.length()}")
-        true
+        success
     } catch (e: Exception) {
         AppLogger.e("SettingsScreen", "导入失败", e)
         false
@@ -784,7 +908,7 @@ fun AboutDialog(onDismiss: () -> Unit) {
                     color = MaterialTheme.colorScheme.primaryContainer
                 ) {
                     Text(
-                        "v 0.2.13",
+                        "v 0.3.0",
                         style = MaterialTheme.typography.labelLarge,
                         color = MaterialTheme.colorScheme.onPrimaryContainer,
                         modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
@@ -795,8 +919,8 @@ fun AboutDialog(onDismiss: () -> Unit) {
                 Spacer(modifier = Modifier.height(4.dp))
                 AboutInfoRow(label = "开发者", value = "EW")
                 AboutInfoRow(label = "功能", value = "收支记录 · 统计分析 · 云端同步")
-                AboutInfoRow(label = "数据存储", value = "本地 Room 数据库")
-                AboutInfoRow(label = "云同步", value = "WebDAV 协议")
+                AboutInfoRow(label = "数据存储", value = "按年分库 · Room 数据库")
+                AboutInfoRow(label = "云同步", value = "WebDAV 多文件同步")
                 Spacer(modifier = Modifier.height(4.dp))
                 HorizontalDivider()
                 Spacer(modifier = Modifier.height(4.dp))

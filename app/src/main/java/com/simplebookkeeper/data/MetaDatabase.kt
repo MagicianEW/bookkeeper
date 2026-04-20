@@ -5,47 +5,43 @@ import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.TypeConverters
-import androidx.sqlite.db.SupportSQLiteDatabase
 import com.simplebookkeeper.data.dao.CategoryDao
-import com.simplebookkeeper.data.dao.TransactionDao
 import com.simplebookkeeper.data.model.Category
 import com.simplebookkeeper.data.model.Converters
-import com.simplebookkeeper.data.model.Transaction
 import com.simplebookkeeper.data.model.TransactionType
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
 /**
- * 旧版单库（仅用于迁移兼容）
- * 新版使用 DatabaseManager + MetaDatabase + YearDatabase
+ * 元数据库：存储分类等全局共享数据
+ * 独立于按年拆分的交易数据库，所有年份共用同一套分类体系
  */
 @Database(
-    entities = [Transaction::class, Category::class],
+    entities = [Category::class],
     version = 1,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
-abstract class AppDatabase : RoomDatabase() {
+abstract class MetaDatabase : RoomDatabase() {
 
-    abstract fun transactionDao(): TransactionDao
     abstract fun categoryDao(): CategoryDao
 
     companion object {
-        const val DB_NAME = "bookkeeper.db"
+        const val DB_NAME = "bookkeeper_meta.db"
 
         @Volatile
-        private var INSTANCE: AppDatabase? = null
+        private var INSTANCE: MetaDatabase? = null
 
-        fun getInstance(context: Context): AppDatabase {
+        fun getInstance(context: Context): MetaDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
                     context.applicationContext,
-                    AppDatabase::class.java,
+                    MetaDatabase::class.java,
                     DB_NAME
                 )
                     .addCallback(object : Callback() {
-                        override fun onCreate(db: SupportSQLiteDatabase) {
+                        override fun onCreate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
                             super.onCreate(db)
                             CoroutineScope(Dispatchers.IO).launch {
                                 INSTANCE?.categoryDao()?.insertAll(defaultCategories())
@@ -58,15 +54,8 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
-        /**
-         * 清除单例引用（迁移后关闭旧库时使用）
-         */
-        fun clearInstance() {
-            INSTANCE = null
-        }
-
-        // 默认分类数据（与 MetaDatabase 保持一致）
         fun defaultCategories(): List<Category> = listOf(
+            // 支出分类
             Category(name = "餐饮", type = TransactionType.EXPENSE, icon = "restaurant", isDefault = true, sortOrder = 1),
             Category(name = "交通", type = TransactionType.EXPENSE, icon = "directions_car", isDefault = true, sortOrder = 2),
             Category(name = "购物", type = TransactionType.EXPENSE, icon = "shopping_bag", isDefault = true, sortOrder = 3),
@@ -76,6 +65,7 @@ abstract class AppDatabase : RoomDatabase() {
             Category(name = "教育", type = TransactionType.EXPENSE, icon = "school", isDefault = true, sortOrder = 7),
             Category(name = "通讯", type = TransactionType.EXPENSE, icon = "phone", isDefault = true, sortOrder = 8),
             Category(name = "其他支出", type = TransactionType.EXPENSE, icon = "more_horiz", isDefault = true, sortOrder = 99),
+            // 收入分类
             Category(name = "工资", type = TransactionType.INCOME, icon = "work", isDefault = true, sortOrder = 1),
             Category(name = "理财", type = TransactionType.INCOME, icon = "trending_up", isDefault = true, sortOrder = 2),
             Category(name = "兼职", type = TransactionType.INCOME, icon = "business_center", isDefault = true, sortOrder = 3),

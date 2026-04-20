@@ -181,20 +181,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch { repo.deleteCategory(category) }
     }
 
-    // 手动同步
+    // 手动同步（多文件版本）
     fun syncNow(config: WebDavConfig, onResult: (SyncResult) -> Unit) {
         viewModelScope.launch {
-            val dbFile = app.getDatabasePath(com.simplebookkeeper.data.AppDatabase.DB_NAME)
-            val result = app.webDavManager.sync(config, dbFile)
+            val result = app.webDavManager.syncMultiFile(config)
             onResult(result)
         }
     }
 
-    // 下载云端数据库（用于冲突解决/首次恢复）
+    // 从云端下载（用于冲突解决）
     fun downloadFromCloud(config: WebDavConfig, onResult: (SyncResult) -> Unit) {
         viewModelScope.launch {
-            val dbFile = app.getDatabasePath(com.simplebookkeeper.data.AppDatabase.DB_NAME)
-            val result = app.webDavManager.download(config, dbFile)
+            val result = app.webDavManager.downloadAll(config)
             onResult(result)
         }
     }

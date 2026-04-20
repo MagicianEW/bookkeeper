@@ -134,10 +134,5 @@ interface TransactionDao {
     @Query("SELECT * FROM transactions ORDER BY date DESC")
     suspend fun getAll(): List<Transaction>
 
-    // 获取有记录的所有年份
-    @Query("""
-        SELECT DISTINCT strftime('%Y', date / 1000, 'unixepoch', 'localtime') as year 
-        FROM transactions ORDER BY year DESC
-    """)
-    fun getAvailableYears(): Flow<List<String>>
+    // getAvailableYears() 已移至 DatabaseManager 文件扫描实现
 }

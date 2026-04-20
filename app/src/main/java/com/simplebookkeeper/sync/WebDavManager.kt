@@ -2,6 +2,9 @@ package com.simplebookkeeper.sync
 
 import android.content.Context
 import com.simplebookkeeper.data.AppDatabase
+import com.simplebookkeeper.data.DataExporter
+import com.simplebookkeeper.data.DatabaseManager
+import com.simplebookkeeper.data.MetaDatabase
 import com.simplebookkeeper.data.repository.WebDavConfig
 import com.simplebookkeeper.util.AppLogger
 import kotlinx.coroutines.Dispatchers
@@ -14,14 +17,39 @@ import okhttp3.RequestBody.Companion.asRequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.File
 import java.io.IOException
+import java.security.MessageDigest
 import java.util.concurrent.TimeUnit
 
+/**
+ * 多文件同步结果
+ */
 sealed class SyncResult {
     object Success : SyncResult()
+    /** 单文件冲突（兼容旧 UI） */
     data class Conflict(val localTime: Long, val remoteTime: Long) : SyncResult()
+    /** 多文件冲突列表 */
+    data class MultiConflict(val conflictFiles: List<ConflictFile>) : SyncResult()
     data class Error(val message: String) : SyncResult()
 }
 
+/** 冲突文件信息 */
+data class ConflictFile(
+    val fileName: String,     // 如 "2024.db", "meta.db"
+    val localMd5: String,
+    val remoteMd5: String
+)
+
+/**
+ * WebDAV 多文件同步管理器
+ *
+ * 远程目录结构：
+ *   bookkeeper/
+ *     .version     # 内容 "2"
+ *     meta.db      # 分类数据库
+ *     2024.db      # 年度交易数据库
+ *     2025.db
+ *     ...
+ */
 class WebDavManager(private val context: Context) {
 
     private val client = OkHttpClient.Builder()
@@ -31,7 +59,8 @@ class WebDavManager(private val context: Context) {
         .build()
 
     private val REMOTE_FOLDER = "bookkeeper"
-    private val REMOTE_FILE = "bookkeeper.db"
+    private val VERSION_FILE = ".version"
+    private val CURRENT_VERSION = "2"
 
     // 规范化URL
     private fun baseUrl(config: WebDavConfig): String {
@@ -39,15 +68,14 @@ class WebDavManager(private val context: Context) {
         return "$url/$REMOTE_FOLDER"
     }
 
-    private fun remoteFileUrl(config: WebDavConfig): String =
-        "${baseUrl(config)}/$REMOTE_FILE"
+    private fun remoteFileUrl(config: WebDavConfig, fileName: String): String =
+        "${baseUrl(config)}/$fileName"
 
     // 测试连接
     suspend fun testConnection(config: WebDavConfig): Result<Unit> = withContext(Dispatchers.IO) {
         AppLogger.i(TAG, "testConnection → url=${config.url}, user=${config.username}")
         try {
             val creds = Credentials.basic(config.username, config.password)
-            // 标准 PROPFIND 必须携带完整 XML body
             val propfindBody = """<?xml version="1.0" encoding="utf-8"?>
 <propfind xmlns="DAV:"><prop><resourcetype/></prop></propfind>"""
                 .toRequestBody("application/xml; charset=utf-8".toMediaType())
@@ -72,12 +100,11 @@ class WebDavManager(private val context: Context) {
         }
     }
 
-    // 确保远端文件夹存在（MKCOL 必须带空 body，不能是 null）
+    // 确保远端文件夹存在
     private suspend fun ensureRemoteFolder(config: WebDavConfig) = withContext(Dispatchers.IO) {
         val creds = Credentials.basic(config.username, config.password)
         val folderUrl = baseUrl(config)
         AppLogger.i(TAG, "ensureRemoteFolder → PROPFIND $folderUrl")
-        // 先用 PROPFIND 检查文件夹是否已存在
         val propfindBody = """<?xml version="1.0" encoding="utf-8"?>
 <propfind xmlns="DAV:"><prop><resourcetype/></prop></propfind>"""
             .toRequestBody("application/xml; charset=utf-8".toMediaType())
@@ -89,13 +116,11 @@ class WebDavManager(private val context: Context) {
             .build()
         val checkResp = runCatching { client.newCall(checkReq).execute() }.getOrNull()
         AppLogger.i(TAG, "ensureRemoteFolder ← PROPFIND HTTP ${checkResp?.code}")
-        // 207 = 已存在，无需再创建
         if (checkResp?.code == 207 || checkResp?.code == 200) {
-            AppLogger.i(TAG, "ensureRemoteFolder: 远端文件夹已存在，跳过 MKCOL")
+            AppLogger.i(TAG, "ensureRemoteFolder: 远端文件夹已存在")
             return@withContext
         }
 
-        // 不存在则 MKCOL 创建，body 必须是空字节而非 null
         AppLogger.i(TAG, "ensureRemoteFolder → MKCOL $folderUrl")
         val mkcolReq = Request.Builder()
             .url(folderUrl)
@@ -104,120 +129,338 @@ class WebDavManager(private val context: Context) {
             .build()
         val mkcolResp = runCatching { client.newCall(mkcolReq).execute() }.getOrNull()
         AppLogger.i(TAG, "ensureRemoteFolder ← MKCOL HTTP ${mkcolResp?.code}")
-        if (mkcolResp?.code != null && mkcolResp.code !in 200..299) {
-            AppLogger.w(TAG, "MKCOL 返回非成功码: ${mkcolResp.code}，可能文件夹已存在或权限不足")
-        }
     }
 
-    // 上传本地DB到云端（上传前先 checkpoint WAL，确保数据完整）
-    suspend fun upload(config: WebDavConfig, dbFile: File): SyncResult = withContext(Dispatchers.IO) {
-        AppLogger.i(TAG, "upload → 开始上传, dbFile=${dbFile.absolutePath}, size=${dbFile.length()} bytes")
-        try {
-            ensureRemoteFolder(config)
-
-            // ① WAL checkpoint：把 WAL 日志合并进主 db 文件
-            try {
-                val db = AppDatabase.getInstance(context)
-                db.openHelper.writableDatabase.execSQL("PRAGMA wal_checkpoint(TRUNCATE)")
-                AppLogger.i(TAG, "upload: WAL checkpoint 完成，dbFile size=${dbFile.length()} bytes")
-            } catch (e: Exception) {
-                AppLogger.w(TAG, "WAL checkpoint 失败，继续上传: ${e.message}", e)
+    // 计算文件 MD5
+    private fun fileMd5(file: File): String {
+        val md = MessageDigest.getInstance("MD5")
+        file.inputStream().use { input ->
+            val buffer = ByteArray(8192)
+            var len: Int
+            while (input.read(buffer).also { len = it } > 0) {
+                md.update(buffer, 0, len)
             }
+        }
+        return md.digest().joinToString("") { "%02x".format(it) }
+    }
 
-            // ② 创建临时副本再上传，避免上传过程中 db 被 Room 修改
-            val tempFile = File(context.cacheDir, "upload_tmp.db")
-            dbFile.copyTo(tempFile, overwrite = true)
-            AppLogger.i(TAG, "upload: 临时副本已创建，size=${tempFile.length()} bytes")
+    // 上传单个文件
+    private suspend fun uploadFile(config: WebDavConfig, fileName: String, file: File): Boolean =
+        withContext(Dispatchers.IO) {
+            try {
+                val targetUrl = remoteFileUrl(config, fileName)
+                AppLogger.i(TAG, "uploadFile → PUT $targetUrl, size=${file.length()}")
+                val creds = Credentials.basic(config.username, config.password)
+                val requestBody = file.asRequestBody("application/octet-stream".toMediaType())
+                val request = Request.Builder()
+                    .url(targetUrl)
+                    .header("Authorization", creds)
+                    .put(requestBody)
+                    .build()
+                val response = client.newCall(request).execute()
+                val success = response.code in 200..299
+                AppLogger.i(TAG, "uploadFile ← HTTP ${response.code}, success=$success")
+                success
+            } catch (e: Exception) {
+                AppLogger.e(TAG, "uploadFile 异常: $fileName", e)
+                false
+            }
+        }
 
-            val targetUrl = remoteFileUrl(config)
-            AppLogger.i(TAG, "upload → PUT $targetUrl")
+    // 下载单个文件
+    private suspend fun downloadFile(config: WebDavConfig, fileName: String, destFile: File): Boolean =
+        withContext(Dispatchers.IO) {
+            try {
+                val targetUrl = remoteFileUrl(config, fileName)
+                AppLogger.i(TAG, "downloadFile → GET $targetUrl")
+                val creds = Credentials.basic(config.username, config.password)
+                val request = Request.Builder()
+                    .url(targetUrl)
+                    .header("Authorization", creds)
+                    .get()
+                    .build()
+                val response = client.newCall(request).execute()
+                if (response.code == 200) {
+                    response.body?.let { body ->
+                        destFile.outputStream().use { out ->
+                            body.byteStream().copyTo(out)
+                        }
+                    }
+                    AppLogger.i(TAG, "downloadFile ← size=${destFile.length()}")
+                    true
+                } else {
+                    AppLogger.w(TAG, "downloadFile ← HTTP ${response.code}")
+                    false
+                }
+            } catch (e: Exception) {
+                AppLogger.e(TAG, "downloadFile 异常: $fileName", e)
+                false
+            }
+        }
+
+    // 获取远程文件列表（PROPFIND）
+    suspend fun getRemoteFileList(config: WebDavConfig): List<String> = withContext(Dispatchers.IO) {
+        try {
             val creds = Credentials.basic(config.username, config.password)
-            val requestBody = tempFile.asRequestBody("application/octet-stream".toMediaType())
+            val propfindBody = """<?xml version="1.0" encoding="utf-8"?>
+<propfind xmlns="DAV:"><prop><displayname/></prop></propfind>"""
+                .toRequestBody("application/xml; charset=utf-8".toMediaType())
             val request = Request.Builder()
-                .url(targetUrl)
+                .url(baseUrl(config))
                 .header("Authorization", creds)
-                .put(requestBody)
+                .header("Depth", "1")
+                .method("PROPFIND", propfindBody)
                 .build()
             val response = client.newCall(request).execute()
-            val respBody = response.body?.string() ?: ""
-            AppLogger.i(TAG, "upload ← HTTP ${response.code}, body=${respBody.take(200)}")
-            tempFile.delete()
-
-            if (response.code in 200..299) {
-                AppLogger.i(TAG, "upload: 上传成功")
-                SyncResult.Success
-            } else {
-                val msg = "上传失败: HTTP ${response.code}"
-                AppLogger.e(TAG, "$msg, responseBody=${respBody.take(500)}")
-                SyncResult.Error(msg)
-            }
+            val body = response.body?.string() ?: return@withContext emptyList()
+            // 解析 XML 提取文件名
+            val regex = Regex("<d:href[^>]*>([^<]+)</d:href>", RegexOption.IGNORE_CASE)
+            regex.findAll(body)
+                .map { match ->
+                    val href = match.groupValues[1]
+                    href.substringAfterLast("/").substringAfterLast("%2F").substringAfterLast("%2f")
+                }
+                .filter { it.isNotBlank() && it != REMOTE_FOLDER }
+                .toList()
         } catch (e: Exception) {
-            AppLogger.e(TAG, "upload 异常", e)
-            SyncResult.Error(e.message ?: "上传异常")
+            AppLogger.e(TAG, "getRemoteFileList 异常", e)
+            emptyList()
         }
     }
 
-    // 从云端下载DB
-    suspend fun download(config: WebDavConfig, destFile: File): SyncResult = withContext(Dispatchers.IO) {
-        val targetUrl = remoteFileUrl(config)
-        AppLogger.i(TAG, "download → GET $targetUrl")
+    // 检查远程版本文件
+    private suspend fun getRemoteVersion(config: WebDavConfig): String? = withContext(Dispatchers.IO) {
         try {
             val creds = Credentials.basic(config.username, config.password)
             val request = Request.Builder()
-                .url(targetUrl)
+                .url(remoteFileUrl(config, VERSION_FILE))
                 .header("Authorization", creds)
                 .get()
                 .build()
             val response = client.newCall(request).execute()
-            AppLogger.i(TAG, "download ← HTTP ${response.code}")
             if (response.code == 200) {
-                response.body?.let { body ->
-                    destFile.outputStream().use { out ->
-                        body.byteStream().copyTo(out)
+                response.body?.string()?.trim()
+            } else null
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    // 上传版本文件
+    private suspend fun uploadVersionFile(config: WebDavConfig): Boolean =
+        withContext(Dispatchers.IO) {
+            val tempFile = File(context.cacheDir, "version_temp")
+            tempFile.writeText(CURRENT_VERSION)
+            uploadFile(config, VERSION_FILE, tempFile).also { tempFile.delete() }
+        }
+
+    // ——— 多文件同步入口 ———
+
+    /**
+     * 多文件同步：上传所有本地 db 文件到云端
+     * 逐文件 MD5 比较，有冲突则返回冲突列表
+     */
+    suspend fun syncMultiFile(config: WebDavConfig): SyncResult = withContext(Dispatchers.IO) {
+        AppLogger.i(TAG, "syncMultiFile → 开始多文件同步")
+        try {
+            ensureRemoteFolder(config)
+
+            // 关闭所有数据库连接
+            DatabaseManager.closeAll()
+
+            // 获取本地所有 db 文件
+            val metaFile = DatabaseManager.getMetaDbFile(context)
+            val yearFiles = DatabaseManager.getAllYearDbFiles(context)
+
+            if (!metaFile.exists() && yearFiles.isEmpty()) {
+                return@withContext SyncResult.Error("本地无数据")
+            }
+
+            // 检查远程版本
+            val remoteVersion = getRemoteVersion(config)
+            AppLogger.i(TAG, "syncMultiFile: remoteVersion=$remoteVersion")
+
+            // 首次同步或旧版本兼容处理
+            if (remoteVersion == null) {
+                // 远程无版本文件，检查是否有旧版单库
+                val oldRemoteExists = remoteFileExists(config, "bookkeeper.db")
+                if (oldRemoteExists) {
+                    AppLogger.i(TAG, "syncMultiFile: 检测到旧版远程格式，需要迁移")
+                    // 下载旧版单库到本地临时文件
+                    val tempOldDb = File(context.cacheDir, "old_remote.db")
+                    if (downloadFile(config, "bookkeeper.db", tempOldDb)) {
+                        // 迁移旧库
+                        val success = com.simplebookkeeper.data.DataExporter.importLegacyDb(context, tempOldDb)
+                        tempOldDb.delete()
+                        if (!success) {
+                            return@withContext SyncResult.Error("旧版数据迁移失败")
+                        }
                     }
                 }
-                AppLogger.i(TAG, "download: 下载成功，size=${destFile.length()} bytes")
-                SyncResult.Success
-            } else if (response.code == 404) {
-                AppLogger.w(TAG, "download: 远端文件不存在 (404)")
-                SyncResult.Error("REMOTE_NOT_FOUND")
+            }
+
+            // 逐文件上传
+            val conflicts = mutableListOf<ConflictFile>()
+
+            // 上传 meta.db
+            if (metaFile.exists()) {
+                val localMd5 = fileMd5(metaFile)
+                // 下载远程 meta.db 计算 MD5
+                val tempMeta = File(context.cacheDir, "remote_meta.db")
+                if (downloadFile(config, "meta.db", tempMeta)) {
+                    val remoteMd5 = fileMd5(tempMeta)
+                    if (localMd5 != remoteMd5) {
+                        conflicts.add(ConflictFile("meta.db", localMd5, remoteMd5))
+                    } else {
+                        // MD5 相同，跳过上传
+                        AppLogger.i(TAG, "syncMultiFile: meta.db MD5 相同，跳过")
+                    }
+                    tempMeta.delete()
+                } else {
+                    // 远程无此文件，直接上传
+                    if (!uploadFile(config, "meta.db", metaFile)) {
+                        return@withContext SyncResult.Error("上传 meta.db 失败")
+                    }
+                }
+            }
+
+            // 上传各年库
+            for (yearFile in yearFiles) {
+                val fileName = yearFile.name.removePrefix("bookkeeper_") // 2024.db
+                val localMd5 = fileMd5(yearFile)
+                val tempYear = File(context.cacheDir, "remote_$fileName")
+                if (downloadFile(config, fileName, tempYear)) {
+                    val remoteMd5 = fileMd5(tempYear)
+                    if (localMd5 != remoteMd5) {
+                        conflicts.add(ConflictFile(fileName, localMd5, remoteMd5))
+                    } else {
+                        AppLogger.i(TAG, "syncMultiFile: $fileName MD5 相同，跳过")
+                    }
+                    tempYear.delete()
+                } else {
+                    if (!uploadFile(config, fileName, yearFile)) {
+                        return@withContext SyncResult.Error("上传 $fileName 失败")
+                    }
+                }
+            }
+
+            // 上传版本文件
+            uploadVersionFile(config)
+
+            if (conflicts.isNotEmpty()) {
+                AppLogger.w(TAG, "syncMultiFile: 检测到 ${conflicts.size} 个文件冲突")
+                // 兼容旧 UI：如果是单文件冲突，返回旧格式
+                if (conflicts.size == 1) {
+                    val metaFile = DatabaseManager.getMetaDbFile(context)
+                    val localTime = metaFile.lastModified()
+                    return@withContext SyncResult.Conflict(localTime, System.currentTimeMillis())
+                }
+                return@withContext SyncResult.MultiConflict(conflicts)
+            }
+
+            AppLogger.i(TAG, "syncMultiFile: 同步成功")
+            SyncResult.Success
+        } catch (e: Exception) {
+            AppLogger.e(TAG, "syncMultiFile 异常", e)
+            SyncResult.Error(e.message ?: "同步异常")
+        }
+    }
+
+    /**
+     * 下载所有远程文件到本地
+     */
+    suspend fun downloadAll(config: WebDavConfig): SyncResult = withContext(Dispatchers.IO) {
+        AppLogger.i(TAG, "downloadAll → 开始下载")
+        try {
+            ensureRemoteFolder(config)
+            DatabaseManager.closeAll()
+
+            val remoteFiles = getRemoteFileList(config)
+            AppLogger.i(TAG, "downloadAll: 远程文件列表 = $remoteFiles")
+
+            var downloaded = 0
+            for (fileName in remoteFiles) {
+                if (fileName == VERSION_FILE) continue
+                if (!fileName.endsWith(".db")) continue
+
+                val destFile = when (fileName) {
+                    "meta.db" -> DatabaseManager.getMetaDbFile(context)
+                    else -> {
+                        val year = fileName.removeSuffix(".db").toIntOrNull() ?: continue
+                        DatabaseManager.getYearDbFile(context, year)
+                    }
+                }
+
+                if (downloadFile(config, fileName, destFile)) {
+                    downloaded++
+                }
+            }
+
+            if (downloaded == 0) {
+                SyncResult.Error("远程无数据文件")
             } else {
-                val msg = "下载失败: ${response.code}"
-                AppLogger.e(TAG, msg)
-                SyncResult.Error(msg)
+                AppLogger.i(TAG, "downloadAll: 成功下载 $downloaded 个文件")
+                SyncResult.Success
             }
         } catch (e: Exception) {
-            AppLogger.e(TAG, "download 异常", e)
+            AppLogger.e(TAG, "downloadAll 异常", e)
             SyncResult.Error(e.message ?: "下载异常")
         }
     }
 
-    // 检查云端文件是否存在（用 PROPFIND 兼容性更好，HEAD 部分服务器不支持）
-    suspend fun remoteFileExists(config: WebDavConfig): Boolean = withContext(Dispatchers.IO) {
-        val targetUrl = remoteFileUrl(config)
-        AppLogger.i(TAG, "remoteFileExists → PROPFIND $targetUrl")
+    // ——— 兼容旧版接口（单文件） ———
+
+    /**
+     * 旧版单文件上传（兼容）
+     */
+    suspend fun upload(config: WebDavConfig, dbFile: File): SyncResult = withContext(Dispatchers.IO) {
         try {
-            val creds = Credentials.basic(config.username, config.password)
-            val propfindBody = """<?xml version="1.0" encoding="utf-8"?>
-<propfind xmlns="DAV:"><prop><resourcetype/><getlastmodified/></prop></propfind>"""
-                .toRequestBody("application/xml; charset=utf-8".toMediaType())
-            val request = Request.Builder()
-                .url(targetUrl)
-                .header("Authorization", creds)
-                .header("Depth", "0")
-                .method("PROPFIND", propfindBody)
-                .build()
-            val response = client.newCall(request).execute()
-            val exists = response.code == 207 || response.code == 200
-            AppLogger.i(TAG, "remoteFileExists ← HTTP ${response.code}, exists=$exists")
-            exists
+            ensureRemoteFolder(config)
+            val success = uploadFile(config, "bookkeeper.db", dbFile)
+            if (success) SyncResult.Success else SyncResult.Error("上传失败")
         } catch (e: Exception) {
-            AppLogger.e(TAG, "remoteFileExists 异常", e)
-            false
+            SyncResult.Error(e.message ?: "上传异常")
         }
     }
 
-    // 获取云端文件最后修改时间（毫秒），从 PROPFIND 响应解析 getlastmodified
+    /**
+     * 旧版单文件下载（兼容）
+     */
+    suspend fun download(config: WebDavConfig, destFile: File): SyncResult = withContext(Dispatchers.IO) {
+        try {
+            val success = downloadFile(config, "bookkeeper.db", destFile)
+            if (success) SyncResult.Success else SyncResult.Error("REMOTE_NOT_FOUND")
+        } catch (e: Exception) {
+            SyncResult.Error(e.message ?: "下载异常")
+        }
+    }
+
+    /**
+     * 检查远程文件是否存在
+     */
+    suspend fun remoteFileExists(config: WebDavConfig, fileName: String = "bookkeeper.db"): Boolean =
+        withContext(Dispatchers.IO) {
+            try {
+                val creds = Credentials.basic(config.username, config.password)
+                val propfindBody = """<?xml version="1.0" encoding="utf-8"?>
+<propfind xmlns="DAV:"><prop><resourcetype/></prop></propfind>"""
+                    .toRequestBody("application/xml; charset=utf-8".toMediaType())
+                val request = Request.Builder()
+                    .url(remoteFileUrl(config, fileName))
+                    .header("Authorization", creds)
+                    .header("Depth", "0")
+                    .method("PROPFIND", propfindBody)
+                    .build()
+                val response = client.newCall(request).execute()
+                response.code == 207 || response.code == 200
+            } catch (e: Exception) {
+                false
+            }
+        }
+
+    /**
+     * 获取远程文件最后修改时间
+     */
     suspend fun getRemoteLastModified(config: WebDavConfig): Long? = withContext(Dispatchers.IO) {
         try {
             val creds = Credentials.basic(config.username, config.password)
@@ -225,55 +468,58 @@ class WebDavManager(private val context: Context) {
 <propfind xmlns="DAV:"><prop><getlastmodified/></prop></propfind>"""
                 .toRequestBody("application/xml; charset=utf-8".toMediaType())
             val request = Request.Builder()
-                .url(remoteFileUrl(config))
+                .url(remoteFileUrl(config, "bookkeeper.db"))
                 .header("Authorization", creds)
                 .header("Depth", "0")
                 .method("PROPFIND", propfindBody)
                 .build()
             val response = client.newCall(request).execute()
             val body = response.body?.string() ?: return@withContext null
-            // 从 XML 中提取 <d:getlastmodified> 或 <getlastmodified> 的值
             val regex = Regex("<[^>]*getlastmodified[^>]*>([^<]+)</[^>]*getlastmodified>", RegexOption.IGNORE_CASE)
             val match = regex.find(body)?.groupValues?.get(1) ?: return@withContext null
             java.text.SimpleDateFormat("EEE, dd MMM yyyy HH:mm:ss zzz", java.util.Locale.US)
                 .parse(match.trim())?.time
         } catch (e: Exception) {
-            AppLogger.e(TAG, "getRemoteLastModified 异常", e)
             null
         }
     }
 
-    // 智能同步：检测冲突，本地优先写入
+    /**
+     * 旧版智能同步（兼容）
+     */
     suspend fun sync(config: WebDavConfig, dbFile: File): SyncResult = withContext(Dispatchers.IO) {
-        AppLogger.i(TAG, "sync → 开始智能同步, url=${config.url}")
         try {
-            val remoteExists = remoteFileExists(config)
+            val remoteExists = remoteFileExists(config, "bookkeeper.db")
             if (!remoteExists) {
-                AppLogger.i(TAG, "sync: 云端无文件，直接上传")
                 return@withContext upload(config, dbFile)
             }
-            // 比较时间戳
             val remoteTime = getRemoteLastModified(config) ?: 0L
             val localTime = dbFile.lastModified()
-            AppLogger.i(TAG, "sync: localTime=$localTime, remoteTime=$remoteTime, diff=${localTime - remoteTime}ms")
-
             when {
-                localTime > remoteTime + 5000 -> {
-                    AppLogger.i(TAG, "sync: 本地更新，上传")
-                    upload(config, dbFile)
-                }
-                remoteTime > localTime + 5000 -> {
-                    AppLogger.w(TAG, "sync: 云端更新，返回冲突")
-                    SyncResult.Conflict(localTime, remoteTime)
-                }
-                else -> {
-                    AppLogger.i(TAG, "sync: 时间基本一致，上传确保同步")
-                    upload(config, dbFile)
-                }
+                localTime > remoteTime + 5000 -> upload(config, dbFile)
+                remoteTime > localTime + 5000 -> SyncResult.Conflict(localTime, remoteTime)
+                else -> upload(config, dbFile)
             }
         } catch (e: Exception) {
-            AppLogger.e(TAG, "sync 异常", e)
             SyncResult.Error(e.message ?: "同步异常")
+        }
+    }
+
+    /**
+     * 删除远程旧版文件（清理）
+     */
+    suspend fun deleteRemoteLegacyFile(config: WebDavConfig): Boolean = withContext(Dispatchers.IO) {
+        try {
+            val creds = Credentials.basic(config.username, config.password)
+            val request = Request.Builder()
+                .url(remoteFileUrl(config, "bookkeeper.db"))
+                .header("Authorization", creds)
+                .delete()
+                .build()
+            val response = client.newCall(request).execute()
+            response.code in 200..299 || response.code == 204 || response.code == 404
+        } catch (e: Exception) {
+            false
         }
     }
 

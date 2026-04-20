@@ -2,7 +2,7 @@
 
 > 一款轻量、简洁、注重隐私的 Android 个人记账应用，支持收入/支出管理、储蓄追踪、WebDAV 云端同步
 
-**版本**：v 0.2.14　｜　**最低系统**：Android 12（API 31）
+**版本**：v 0.3.0　｜　**最低系统**：Android 12（API 31）
 
 ---
 
@@ -117,6 +117,7 @@ app/build/outputs/apk/debug/app-debug.apk
 
 | 版本 | 说明 |
 |------|------|
+| v 0.3.0 | **重大更新**：数据库按年分库（bookkeeper_YYYY.db）+ 元数据库（bookkeeper_meta.db），解决单库膨胀问题；WebDAV 改为多文件同步+MD5校验；导入/导出改为 .zip 格式打包；迁移时自动拆分旧库 |
 | v 0.2.14 | 修复记账页分类添加后不显示、修复云端同步覆盖本地数据问题、修复本地导入数据不生效 |
 | v 0.2.13 | 修复编辑记录删除功能 |
 | v 0.2.12 | 统计页新增年储蓄统计（储蓄总额-支取总额） |
@@ -132,7 +133,11 @@ app/build/outputs/apk/debug/app-debug.apk
 app/src/main/java/com/simplebookkeeper/
 ├── BookkeeperApp.kt          # Application 入口
 ├── data/
-│   ├── AppDatabase.kt        # Room 数据库 & 默认分类
+│   ├── AppDatabase.kt        # Room 数据库 & 默认分类（迁移兼容）
+│   ├── DatabaseManager.kt    # 按年分库管理器（LRU缓存）
+│   ├── MetaDatabase.kt       # 元数据库（分类存储）
+│   ├── DataMigrator.kt       # 旧库→分库迁移工具
+│   ├── DataExporter.kt       # .zip 导入/导出
 │   ├── dao/                  # TransactionDao, CategoryDao
 │   ├── model/                # Transaction, Category, Converters
 │   └── repository/           # TransactionRepository, SettingsRepository
@@ -140,7 +145,7 @@ app/src/main/java/com/simplebookkeeper/
 │   ├── PasswordManager.kt     # 密码管理
 │   └── BiometricAuth.kt      # 生物识别
 ├── sync/
-│   ├── WebDavManager.kt      # WebDAV 同步核心
+│   ├── WebDavManager.kt      # WebDAV 多文件同步核心
 │   └── SyncWorker.kt         # 后台同步任务
 ├── ui/
 │   ├── MainActivity.kt       # Activity 入口
