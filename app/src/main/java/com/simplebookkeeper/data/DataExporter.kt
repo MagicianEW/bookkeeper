@@ -22,37 +22,46 @@ import java.util.zip.ZipOutputStream
 object DataExporter {
 
     private const val TAG = "DataExporter"
-    private const val META_DB_NAME = "meta.db"
+
+    // ─── 导出 ─────────────────────────────────────────────────
 
     /**
      * 导出：将所有数据库文件打包为 zip
-     * @param outputFile 输出 zip 文件
+     * 先关闭所有 DB 连接（包括 MetaDatabase 的 WAL），再打包
      */
     suspend fun exportToZip(context: Context, outputFile: File): Boolean = withContext(Dispatchers.IO) {
         try {
-            // 先关闭所有数据库连接
+            // 关闭所有数据库连接（WAL checkpoint，确保数据落盘）
             DatabaseManager.closeAll()
+            MetaDatabase.clearInstance()
+
+            // 等待一下让文件锁释放
+            kotlinx.coroutines.delay(100)
 
             val zipOut = ZipOutputStream(BufferedOutputStream(FileOutputStream(outputFile)))
 
             // 添加 meta.db
             val metaFile = DatabaseManager.getMetaDbFile(context)
+            AppLogger.i(TAG, "meta.db 路径: ${metaFile.absolutePath}, exists=${metaFile.exists()}")
             if (metaFile.exists()) {
-                addToZip(zipOut, META_DB_NAME, metaFile)
+                addToZip(zipOut, "meta.db", metaFile)
                 AppLogger.i(TAG, "导出 meta.db, size=${metaFile.length()}")
+            } else {
+                AppLogger.w(TAG, "meta.db 不存在，跳过")
             }
 
             // 添加所有年库
-            val yearFiles = DatabaseManager.getAllYearDbFiles(context)
+            val yearFiles = DatabaseManager.getAllYearDbFilesStatic(context)
+            AppLogger.i(TAG, "找到 ${yearFiles.size} 个年库: ${yearFiles.map { it.name }}")
             yearFiles.forEach { file ->
-                // 文件名: bookkeeper_2025.db → 2025.db
+                AppLogger.i(TAG, "导出文件: ${file.absolutePath}, exists=${file.exists()}, size=${file.length()}")
                 val entryName = file.name.removePrefix("bookkeeper_")
                 addToZip(zipOut, entryName, file)
-                AppLogger.i(TAG, "导出 ${file.name}, size=${file.length()}")
+                AppLogger.i(TAG, "导出 ${file.name} 成功")
             }
 
             zipOut.close()
-            AppLogger.i(TAG, "导出完成: ${outputFile.absolutePath}, size=${outputFile.length()}")
+            AppLogger.i(TAG, "导出完成: ${outputFile.length()} bytes")
             true
         } catch (e: Exception) {
             AppLogger.e(TAG, "导出失败", e)
@@ -60,57 +69,54 @@ object DataExporter {
         }
     }
 
+    // ─── 导入 ─────────────────────────────────────────────────
+
     /**
-     * 导入：从 zip 文件恢复数据
-     * @param zipFile 输入 zip 文件
-     * @return 是否成功
+     * 导入 zip 文件（新版格式）
      */
     suspend fun importFromZip(context: Context, zipFile: File): Boolean = withContext(Dispatchers.IO) {
         try {
-            // 关闭所有数据库连接
             DatabaseManager.closeAll()
 
             val zipIn = ZipInputStream(BufferedInputStream(FileInputStream(zipFile)))
             var entry = zipIn.nextEntry
             var importedCount = 0
-            var importedMeta = false
 
             while (entry != null) {
-                val entryName = entry.name
-
-                if (entryName == META_DB_NAME) {
-                    // 关闭旧连接并清理单例，指向新文件
-                    MetaDatabase.clearInstance()
-                    val destFile = DatabaseManager.getMetaDbFile(context)
-                    extractFromZip(zipIn, destFile)
-                    AppLogger.i(TAG, "导入 meta.db")
-                    importedCount++
-                    importedMeta = true
-                } else if (entryName.matches(Regex("\\d{4}\\.db"))) {
-                    // YYYY.db → bookkeeper_YYYY.db
-                    val year = entryName.removeSuffix(".db").toIntOrNull()
-                    if (year != null) {
-                        val destFile = DatabaseManager.getYearDbFile(context, year)
-                        extractFromZip(zipIn, destFile)
-                        AppLogger.i(TAG, "导入年库: $year")
+                when (entry.name) {
+                    "meta.db" -> {
+                        MetaDatabase.clearInstance()
+                        val dest = DatabaseManager.getMetaDbFile(context)
+                        extractFromZip(zipIn, dest)
+                        AppLogger.i(TAG, "导入 meta.db")
                         importedCount++
                     }
+                    else -> {
+                        if (entry.name.matches(Regex("\\d{4}\\.db"))) {
+                            val year = entry.name.removeSuffix(".db").toIntOrNull()
+                            if (year != null) {
+                                val dest = DatabaseManager.getYearDbFileStatic(context, year)
+                                extractFromZip(zipIn, dest)
+                                AppLogger.i(TAG, "导入年库: $year")
+                                importedCount++
+                            }
+                        }
+                    }
                 }
-
                 zipIn.closeEntry()
                 entry = zipIn.nextEntry
             }
 
             zipIn.close()
-            AppLogger.i(TAG, "导入完成: 共导入 $importedCount 个文件")
 
-            // 校验导入的文件是否为有效 SQLite 数据库
+            // 校验
             val metaFile = DatabaseManager.getMetaDbFile(context)
             if (metaFile.exists() && !isValidSqlite(metaFile)) {
-                AppLogger.e(TAG, "meta.db 校验失败，不是有效的 SQLite 文件")
+                AppLogger.e(TAG, "meta.db 校验失败")
                 return@withContext false
             }
 
+            AppLogger.i(TAG, "导入完成: $importedCount 个文件")
             importedCount > 0
         } catch (e: Exception) {
             AppLogger.e(TAG, "导入 zip 失败", e)
@@ -119,60 +125,50 @@ object DataExporter {
     }
 
     /**
-     * 导入旧格式 .db 文件：走 DataMigrator 迁移逻辑
-     * @param dbFile 旧版 bookkeeper.db 文件
+     * 导入旧格式 .db 文件（首次升级迁移）
      */
     suspend fun importLegacyDb(context: Context, dbFile: File): Boolean = withContext(Dispatchers.IO) {
         try {
-            // 校验文件头
             if (!isValidSqlite(dbFile)) {
                 AppLogger.e(TAG, "不是有效的 SQLite 文件")
                 return@withContext false
             }
 
-            // 关闭所有连接
             DatabaseManager.closeAll()
 
-            // 将文件复制为旧格式数据库路径
+            // 复制到旧库路径，由 DatabaseManager 的迁移逻辑处理
             val legacyFile = context.getDatabasePath(AppDatabase.DB_NAME)
             dbFile.copyTo(legacyFile, overwrite = true)
 
-            // 走迁移逻辑
-            val success = DataMigrator.migrate(context)
-            if (!success) {
-                AppLogger.e(TAG, "旧格式导入迁移失败")
-            }
-            success
+            // 触发迁移
+            val dbManager = DatabaseManager(context)
+            dbManager.initialize()
+            dbManager.close()
+
+            true
         } catch (e: Exception) {
             AppLogger.e(TAG, "旧格式导入失败", e)
             false
         }
     }
 
-    /**
-     * 判断文件是否为新格式 zip
-     */
+    // ─── 工具方法 ───────────────────────────────────────────────
+
     fun isZipFile(file: File): Boolean {
         if (!file.exists()) return false
-        val header = file.readBytes(4)
-        // ZIP 文件魔数: PK\x03\x04
+        val header = ByteArray(4)
+        FileInputStream(file).use { it.read(header) }
         return header.size >= 4 && header[0] == 0x50.toByte() && header[1] == 0x4B.toByte()
     }
 
-    /**
-     * 判断文件是否为旧格式 SQLite db
-     */
     fun isValidSqlite(file: File): Boolean {
         if (!file.exists()) return false
-        val header = file.readBytes(16)
-        val sqliteHeader = "SQLite format 3\u0000".toByteArray()
-        return header.contentEquals(sqliteHeader)
+        val header = ByteArray(16)
+        FileInputStream(file).use { it.read(header) }
+        return "SQLite format 3\u0000".toByteArray().contentEquals(header)
     }
 
-    // ——— 内部工具 ———
-
     private fun addToZip(zipOut: ZipOutputStream, entryName: String, file: File) {
-        // 先做 WAL checkpoint 确保数据完整（如果 db 还在打开状态）
         val entry = ZipEntry(entryName)
         zipOut.putNextEntry(entry)
         FileInputStream(file).use { input ->
@@ -186,10 +182,10 @@ object DataExporter {
     }
 
     private fun extractFromZip(zipIn: ZipInputStream, destFile: File) {
-        // 删除旧文件和 WAL/SHM
+        // 清理 WAL/SHM
         destFile.delete()
-        File(destFile.absolutePath + "-wal").delete()
-        File(destFile.absolutePath + "-shm").delete()
+        File("${destFile.absolutePath}-wal").delete()
+        File("${destFile.absolutePath}-shm").delete()
 
         BufferedOutputStream(FileOutputStream(destFile)).use { out ->
             val buffer = ByteArray(8192)
@@ -197,15 +193,6 @@ object DataExporter {
             while (zipIn.read(buffer).also { len = it } > 0) {
                 out.write(buffer, 0, len)
             }
-        }
-    }
-
-    private fun File.readBytes(maxBytes: Int): ByteArray {
-        if (!exists()) return ByteArray(0)
-        return FileInputStream(this).use { input ->
-            val buffer = ByteArray(maxBytes)
-            val read = input.read(buffer)
-            if (read < maxBytes) buffer.copyOf(read) else buffer
         }
     }
 }
