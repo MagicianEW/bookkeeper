@@ -1,6 +1,7 @@
 package com.simplebookkeeper.data
 
 import android.content.Context
+import android.database.sqlite.SQLiteDatabase
 import com.simplebookkeeper.util.AppLogger
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -116,10 +117,20 @@ object DataExporter {
                 return@withContext false
             }
 
-            // 导入完成后清除所有 DB 缓存，让 Room 下次访问时重新打开并执行版本迁移
+            // 导入完成后，逐个检查年库 schema，手动执行 v1→v2 迁移（amount Double→Long）
+            val dbDir = DatabaseManager.getMetaDbFile(context).parentFile
+            if (dbDir != null && dbDir.exists()) {
+                dbDir.listFiles { _, name ->
+                    name.startsWith("bookkeeper_") && name.matches(Regex("bookkeeper_\\d{4}\\.db$"))
+                }?.forEach { dbFile ->
+                    migrateYearDbIfNeeded(dbFile)
+                }
+            }
+
+            // 清除所有 DB 缓存
             DatabaseManager.closeAll()
             MetaDatabase.clearInstance()
-            AppLogger.i(TAG, "已清除 DB 缓存，Room 将在下次访问时自动迁移")
+            AppLogger.i(TAG, "已清除 DB 缓存")
 
             AppLogger.i(TAG, "导入完成: $importedCount 个文件")
             importedCount > 0
@@ -198,6 +209,122 @@ object DataExporter {
             while (zipIn.read(buffer).also { len = it } > 0) {
                 out.write(buffer, 0, len)
             }
+        }
+    }
+
+    /**
+     * 检查年库是否需要 v1→v2 迁移（amount: Double→Long），如需要则手动执行
+     *
+     * Room 的自动迁移依赖 identity_hash 校验，导入旧版 .db 时可能失败导致崩溃。
+     * 这里用原始 SQL 直接操作，更可靠。
+     */
+    internal fun migrateYearDbIfNeeded(dbFile: File) {
+        if (!dbFile.exists()) return
+        try {
+            val db = SQLiteDatabase.openDatabase(
+                dbFile.absolutePath, null,
+                SQLiteDatabase.OPEN_READWRITE
+            )
+
+            // 检查 room_master_table 中的版本号
+            val version = try {
+                val cursor = db.rawQuery(
+                    "SELECT version FROM room_master_table WHERE id = 42", null
+                )
+                val v = if (cursor.moveToFirst()) cursor.getInt(0) else 0
+                cursor.close()
+                v
+            } catch (e: Exception) {
+                // 没有 room_master_table，说明不是 Room 创建的，或版本极旧
+                AppLogger.w(TAG, "${dbFile.name}: 无 room_master_table，检查原始 schema")
+                0
+            }
+
+            AppLogger.i(TAG, "${dbFile.name}: schema version = $version")
+
+            if (version < 2) {
+                // 检查 amount 列当前类型
+                val amountType = try {
+                    val cursor = db.rawQuery(
+                        "SELECT type FROM pragma_table_info('transactions') WHERE name = 'amount'",
+                        null
+                    )
+                    val t = if (cursor.moveToFirst()) cursor.getString(0) else ""
+                    cursor.close()
+                    t.uppercase()
+                } catch (e: Exception) {
+                    AppLogger.e(TAG, "${dbFile.name}: 无法读取 amount 类型", e)
+                    db.close()
+                    return
+                }
+
+                AppLogger.i(TAG, "${dbFile.name}: amount 类型 = $amountType")
+
+                if (amountType == "REAL" || amountType == "FLOAT" || amountType == "DOUBLE") {
+                    // 执行迁移：Double(元) → Long(分)
+                    AppLogger.i(TAG, "${dbFile.name}: 执行 v1→v2 迁移 (Double→Long)")
+
+                    db.execSQL("""
+                        CREATE TABLE transactions_v2(
+                            id INTEGER PRIMARY KEY,
+                            type TEXT NOT NULL,
+                            amount INTEGER NOT NULL,
+                            categoryId INTEGER NOT NULL,
+                            paymentMethod TEXT NOT NULL,
+                            note TEXT NOT NULL,
+                            date INTEGER NOT NULL,
+                            createdAt INTEGER NOT NULL,
+                            updatedAt INTEGER NOT NULL
+                        )
+                    """.trimIndent())
+
+                    db.execSQL("""
+                        INSERT INTO transactions_v2(id,type,amount,categoryId,paymentMethod,note,date,createdAt,updatedAt)
+                        SELECT
+                            id, type,
+                            CAST(amount * 100 AS INTEGER),
+                            categoryId, paymentMethod, note, date, createdAt, updatedAt
+                        FROM transactions
+                    """.trimIndent())
+
+                    db.execSQL("DROP TABLE transactions")
+                    db.execSQL("ALTER TABLE transactions_v2 RENAME TO transactions")
+
+                    // 更新 Room 版本标记
+                    try {
+                        db.execSQL("DELETE FROM room_master_table WHERE id = 42")
+                        db.execSQL(
+                            "INSERT INTO room_master_table(id, hash, version) VALUES(42, ?, 2)",
+                            arrayOf("manual_migration_v2")
+                        )
+                    } catch (e: Exception) {
+                        // 可能没有 room_master_table，创建一个
+                        try {
+                            db.execSQL(
+                                "CREATE TABLE IF NOT EXISTS room_master_table(id INTEGER, hash TEXT, version INTEGER)"
+                            )
+                            db.execSQL(
+                                "INSERT INTO room_master_table(id, hash, version) VALUES(42, ?, 2)",
+                                arrayOf("manual_migration_v2")
+                            )
+                        } catch (e2: Exception) {
+                            AppLogger.w(TAG, "${dbFile.name}: 无法更新 room_master_table", e2)
+                        }
+                    }
+
+                    AppLogger.i(TAG, "${dbFile.name}: 迁移完成")
+                } else {
+                    AppLogger.i(TAG, "${dbFile.name}: amount 已经是 INTEGER，无需迁移")
+                    // 只更新版本号
+                    try {
+                        db.execSQL("UPDATE room_master_table SET version = 2 WHERE id = 42")
+                    } catch (_: Exception) {}
+                }
+            }
+
+            db.close()
+        } catch (e: Exception) {
+            AppLogger.e(TAG, "${dbFile.name}: 迁移检查失败", e)
         }
     }
 }

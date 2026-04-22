@@ -2,6 +2,7 @@ package com.simplebookkeeper.sync
 
 import android.content.Context
 import com.simplebookkeeper.data.DatabaseManager
+import com.simplebookkeeper.data.DataExporter
 import com.simplebookkeeper.data.MetaDatabase
 import com.simplebookkeeper.data.repository.WebDavConfig
 import com.simplebookkeeper.util.AppLogger
@@ -344,8 +345,17 @@ class WebDavManager(private val context: Context) {
 
                 if (downloaded == 0) SyncResult.Error("REMOTE_NOT_FOUND")
                 else {
-                    // 下载了新的 .db 文件，清除所有 DB 缓存
-                    // Room 下次访问时会检测版本并自动执行 MIGRATION_1_2
+                    // 下载了新的 .db 文件，逐个检查并迁移 schema
+                    val dbDir = dbManager.metaDbFile.parentFile
+                    if (dbDir != null && dbDir.exists()) {
+                        dbDir.listFiles { _, name ->
+                            name.startsWith("bookkeeper_") && name.matches(Regex("""bookkeeper_\d{4}\.db$"""))
+                        }?.forEach { dbFile ->
+                            DataExporter.migrateYearDbIfNeeded(dbFile)
+                        }
+                    }
+
+                    // 清除所有 DB 缓存
                     dbManager.invalidateAllYearDbs()
                     MetaDatabase.clearInstance()
                     AppLogger.i(TAG, "downloadMulti: 成功 $downloaded 个文件，已清除 DB 缓存")
