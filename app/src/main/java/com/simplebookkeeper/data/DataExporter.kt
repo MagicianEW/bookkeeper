@@ -117,17 +117,7 @@ object DataExporter {
                 return@withContext false
             }
 
-            // 导入完成后，逐个检查年库 schema，手动执行 v1→v2 迁移（amount Double→Long）
-            val dbDir = DatabaseManager.getMetaDbFile(context).parentFile
-            if (dbDir != null && dbDir.exists()) {
-                dbDir.listFiles { _, name ->
-                    name.startsWith("bookkeeper_") && name.matches(Regex("bookkeeper_\\d{4}\\.db$"))
-                }?.forEach { dbFile ->
-                    migrateYearDbIfNeeded(dbFile)
-                }
-            }
-
-            // 清除所有 DB 缓存
+            // 清除所有 DB 缓存（Room 会自动执行 MIGRATION_1_2）
             DatabaseManager.closeAll()
             MetaDatabase.clearInstance()
             AppLogger.i(TAG, "已清除 DB 缓存")
@@ -266,7 +256,7 @@ object DataExporter {
 
                     db.execSQL("""
                         CREATE TABLE transactions_v2(
-                            id INTEGER PRIMARY KEY,
+                            id INTEGER NOT NULL PRIMARY KEY,
                             type TEXT NOT NULL,
                             amount INTEGER NOT NULL,
                             categoryId INTEGER NOT NULL,

@@ -153,6 +153,14 @@ fun FirstLaunchSyncDialog(
                                     isSuccess = true
                                     resultMessage = "数据已下载（部分文件冲突），请重启应用。"
                                 }
+                                is SyncResult.SizeMismatch -> {
+                                    isSuccess = true
+                                    resultMessage = "数据已下载，请重启应用。"
+                                }
+                                else -> {
+                                    isSuccess = true
+                                    resultMessage = "数据已下载，请重启应用。"
+                                }
                             }
                             app.settingsRepository.markCloudSyncPromptShown()
                             step = 3

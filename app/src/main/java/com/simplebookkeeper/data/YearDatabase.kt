@@ -54,7 +54,7 @@ abstract class YearDatabase : RoomDatabase() {
                 // SQLite 不支持直接改列类型，用临时表过渡
                 db.execSQL("""
                     CREATE TABLE transactions_v2(
-                        id INTEGER PRIMARY KEY,
+                        id INTEGER NOT NULL PRIMARY KEY,
                         type TEXT NOT NULL,
                         amount INTEGER NOT NULL,
                         categoryId INTEGER NOT NULL,

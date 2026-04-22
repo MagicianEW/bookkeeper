@@ -34,18 +34,23 @@ class SyncWorker(
                 AppLogger.i(TAG, "doWork: 云端有数据，本地无数据，下载")
                 return when (val result = webDavManager.downloadMulti(config, dbManager)) {
                     is SyncResult.Success -> Result.success()
+                    is SyncResult.SizeMismatch -> Result.success()
                     is SyncResult.Error -> Result.retry()
                     is SyncResult.Conflict -> Result.success()
                     is SyncResult.MultiConflict -> Result.success()
+                    is SyncResult.SelectBackup -> Result.success()
+                    else -> Result.success()
                 }
             }
             // 本地有数据 → 上传同步
             hasLocalData -> {
                 return when (val result = webDavManager.syncMulti(config, dbManager)) {
                     is SyncResult.Success -> Result.success()
+                    is SyncResult.SizeMismatch -> Result.success()  // 后台同步不阻塞，等待用户下次手动确认
                     is SyncResult.Error -> Result.retry()
                     is SyncResult.Conflict -> Result.success()
                     is SyncResult.MultiConflict -> Result.success()
+                    else -> Result.success()
                 }
             }
             else -> return Result.success()

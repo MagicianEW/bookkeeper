@@ -5,6 +5,7 @@ import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
@@ -26,6 +27,7 @@ import com.simplebookkeeper.data.DatabaseManager
 import com.simplebookkeeper.data.model.Category
 import com.simplebookkeeper.data.model.TransactionType
 import com.simplebookkeeper.data.repository.WebDavConfig
+import com.simplebookkeeper.sync.BackupVersion
 import com.simplebookkeeper.sync.ConflictFile
 import com.simplebookkeeper.sync.SyncResult
 import com.simplebookkeeper.sync.SyncWorker
@@ -75,6 +77,11 @@ fun SettingsScreen(
     var conflictData by remember { mutableStateOf<Pair<Long, Long>?>(null) }
     var conflictConfig by remember { mutableStateOf<WebDavConfig?>(null) }
     var multiConflictFiles by remember { mutableStateOf<List<ConflictFile>>(emptyList()) }
+
+    // 备份版本选择对话框状态
+    var showBackupDialog by remember { mutableStateOf(false) }
+    var backupVersions by remember { mutableStateOf<List<BackupVersion>>(emptyList()) }
+    var backupConfig by remember { mutableStateOf<WebDavConfig?>(null) }
 
     val allCategories by viewModel.allCategories.collectAsState()
 
@@ -327,8 +334,45 @@ fun SettingsScreen(
                                     conflictData = null
                                     showConflictDialog = true
                                 }
+                                is SyncResult.SizeMismatch -> {
+                                    conflictConfig = config
+                                    multiConflictFiles = result.conflictFiles
+                                    conflictData = null
+                                    showConflictDialog = true
+                                }
+                                else -> {}
                             }
                             isSyncing = false
+                        }
+                    }
+                )
+            }
+            // 从备份恢复
+            item {
+                SettingsItem(
+                    icon = Icons.Default.History,
+                    title = "从备份恢复",
+                    subtitle = "选择云端历史版本恢复数据",
+                    onClick = {
+                        if (isSyncing) return@SettingsItem
+                        scope.launch {
+                            val config = app.settingsRepository.webDavConfig.first()
+                            if (!config.enabled || config.url.isBlank()) {
+                                syncMessage = "请先配置并启用 WebDAV"
+                                return@launch
+                            }
+                            isSyncing = true
+                            syncMessage = "正在获取备份列表..."
+                            val backups = app.webDavManager.getRemoteBackups(config)
+                            isSyncing = false
+                            if (backups.isEmpty()) {
+                                syncMessage = "未找到云端备份"
+                            } else {
+                                backupVersions = backups
+                                backupConfig = config
+                                showBackupDialog = true
+                                syncMessage = null
+                            }
                         }
                     }
                 )
@@ -478,7 +522,7 @@ fun SettingsScreen(
                         val cfg = conflictConfig ?: return@launch
                         if (useLocal) {
                             when (val result = app.webDavManager.syncMulti(cfg, app.dbManager)) {
-                                is SyncResult.Success -> syncMessage = "✅ 已以本地数据为准同步到云端"
+                                is SyncResult.Success, is SyncResult.SizeMismatch -> syncMessage = "✅ 已以本地数据为准同步到云端"
                                 is SyncResult.Error -> syncMessage = "❌ 同步失败: ${result.message}"
                                 else -> {}
                             }
@@ -514,7 +558,7 @@ fun SettingsScreen(
                         val cfg = conflictConfig ?: return@launch
                         if (useLocal) {
                             when (val result = app.webDavManager.syncMulti(cfg, app.dbManager)) {
-                                is SyncResult.Success -> syncMessage = "✅ 已以本地数据为准覆盖云端"
+                                is SyncResult.Success, is SyncResult.SizeMismatch -> syncMessage = "✅ 已以本地数据为准覆盖云端"
                                 is SyncResult.Error -> syncMessage = "❌ 上传失败: ${result.message}"
                                 else -> {}
                             }
@@ -535,6 +579,29 @@ fun SettingsScreen(
                     conflictData = null
                     conflictConfig = null
                 }
+            )
+        }
+
+        // 备份版本选择对话框
+        if (showBackupDialog) {
+            BackupVersionDialog(
+                versions = backupVersions,
+                onSelect = { version ->
+                    scope.launch {
+                        val cfg = backupConfig ?: return@launch
+                        syncMessage = "正在恢复 ${version.displayName}..."
+                        isSyncing = true
+                        val result = app.webDavManager.restoreFromBackup(cfg, app.dbManager, version)
+                        isSyncing = false
+                        syncMessage = when (result) {
+                            is SyncResult.Success -> "✅ 已恢复到 ${version.displayName}，请重启应用"
+                            is SyncResult.Error -> "❌ 恢复失败: ${result.message}"
+                            else -> "恢复完成"
+                        }
+                        showBackupDialog = false
+                    }
+                },
+                onDismiss = { showBackupDialog = false }
             )
         }
     }
@@ -641,6 +708,63 @@ fun ConflictResolveDialog(
             TextButton(onClick = onDismiss) {
                 Text("取消")
             }
+        }
+    )
+}
+
+// 备份版本选择对话框
+@Composable
+fun BackupVersionDialog(
+    versions: List<BackupVersion>,
+    onSelect: (BackupVersion) -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        icon = { Icon(Icons.Default.History, contentDescription = null) },
+        title = { Text("选择备份版本", fontWeight = FontWeight.Bold) },
+        text = {
+            Column {
+                Text("云端共有 ${versions.size} 个备份版本：")
+                Spacer(modifier = Modifier.height(8.dp))
+                LazyColumn(modifier = Modifier.heightIn(max = 300.dp)) {
+                    items(versions.size) { index ->
+                        val version = versions[index]
+                        Surface(
+                            onClick = { onSelect(version) },
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = MaterialTheme.shapes.small
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(12.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    Icons.Default.CalendarToday,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary
+                                )
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Column {
+                                    Text(version.displayName, fontWeight = FontWeight.Medium)
+                                    Text(
+                                        "文件名: ${version.fileName}",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                        }
+                        if (index < versions.size - 1) {
+                            HorizontalDivider(modifier = Modifier.padding(horizontal = 8.dp))
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("取消") }
         }
     )
 }

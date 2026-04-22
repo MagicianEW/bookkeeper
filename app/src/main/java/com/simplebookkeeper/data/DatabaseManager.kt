@@ -63,7 +63,7 @@ class DatabaseManager(private val context: Context) {
 
     suspend fun initialize() {
         withContext(Dispatchers.IO) {
-            getOrCreateYearDb(currentYear())
+            // 先尝试迁移旧数据（如果有）
             if (needsMigration()) {
                 _migrationState.value = MigrationState.InProgress
                 performMigration()
@@ -71,6 +71,22 @@ class DatabaseManager(private val context: Context) {
             } else {
                 _migrationState.value = MigrationState.Done
             }
+            // 扫描并打开所有已存在的年份数据库（支持从备份恢复）
+            scanAndOpenAllYears()
+        }
+    }
+
+    /** 扫描数据库目录，打开所有已存在的年份数据库 */
+    private fun scanAndOpenAllYears() {
+        val existingYears = getAllYears()
+        if (existingYears.isNotEmpty()) {
+            AppLogger.i(TAG, "扫描到已存在年份数据库: $existingYears")
+            existingYears.forEach { year ->
+                getOrCreateYearDb(year)
+            }
+        } else {
+            // 无历史数据则创建当前年份
+            getOrCreateYearDb(currentYear())
         }
     }
 
