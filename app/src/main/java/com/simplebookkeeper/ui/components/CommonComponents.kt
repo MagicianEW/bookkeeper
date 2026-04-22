@@ -86,7 +86,7 @@ fun TransactionItem(
 
             Column(horizontalAlignment = Alignment.End) {
                 Text(
-                    text = "$amountPrefix¥%.2f".format(transaction.amount),
+                    text = "$amountPrefix¥%.2f".format(transaction.amount / 100.0),
                     color = amountColor,
                     fontWeight = FontWeight.Bold,
                     fontSize = 16.sp
@@ -103,8 +103,8 @@ fun TransactionItem(
 
 @Composable
 fun SummaryCard(
-    income: Double,
-    expense: Double,
+    income: Long,    // 单位：分
+    expense: Long,    // 单位：分
     modifier: Modifier = Modifier
 ) {
     Card(
@@ -138,7 +138,7 @@ fun SummaryCard(
 }
 
 @Composable
-fun SummaryItem(label: String, amount: Double, color: Color) {
+fun SummaryItem(label: String, amountInCents: Long, color: Color) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Text(
             text = label,
@@ -147,7 +147,7 @@ fun SummaryItem(label: String, amount: Double, color: Color) {
         )
         Spacer(modifier = Modifier.height(4.dp))
         Text(
-            text = "¥%.2f".format(amount),
+            text = "¥%.2f".format(amountInCents / 100.0),
             color = color,
             fontWeight = FontWeight.Bold,
             fontSize = 18.sp

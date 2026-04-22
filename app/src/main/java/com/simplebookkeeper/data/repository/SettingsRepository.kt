@@ -42,8 +42,8 @@ class SettingsRepository(private val context: Context) {
     val isCloudSyncPromptShown: Flow<Boolean> = context.settingsDataStore.data
         .map { it[CLOUD_SYNC_PROMPT_SHOWN] ?: false }
 
-    val savingsBalance: Flow<Double> = context.settingsDataStore.data.map { prefs ->
-        prefs[SAVINGS_BALANCE]?.toDoubleOrNull() ?: 0.0
+    val savingsBalance: Flow<Long> = context.settingsDataStore.data.map { prefs ->
+        prefs[SAVINGS_BALANCE]?.toLongOrNull() ?: 0L
     }
 
     suspend fun saveWebDavConfig(config: WebDavConfig) {
@@ -68,17 +68,17 @@ class SettingsRepository(private val context: Context) {
     }
 
     // 储蓄操作
-    suspend fun addToSavings(amount: Double) {
+    suspend fun addToSavings(amount: Long) {
         context.settingsDataStore.edit { prefs ->
-            val current = prefs[SAVINGS_BALANCE]?.toDoubleOrNull() ?: 0.0
+            val current = prefs[SAVINGS_BALANCE]?.toLongOrNull() ?: 0L
             prefs[SAVINGS_BALANCE] = (current + amount).toString()
         }
     }
 
-    suspend fun withdrawFromSavings(amount: Double): Boolean {
+    suspend fun withdrawFromSavings(amount: Long): Boolean {
         var success = false
         context.settingsDataStore.edit { prefs ->
-            val current = prefs[SAVINGS_BALANCE]?.toDoubleOrNull() ?: 0.0
+            val current = prefs[SAVINGS_BALANCE]?.toLongOrNull() ?: 0L
             if (current >= amount) {
                 prefs[SAVINGS_BALANCE] = (current - amount).toString()
                 success = true

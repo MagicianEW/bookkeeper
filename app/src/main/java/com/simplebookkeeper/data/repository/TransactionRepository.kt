@@ -54,28 +54,28 @@ class TransactionRepository(
 
     // ─── 统计 ──────────────────────────────────────────────────
 
-    fun getMonthlyIncome(year: Int, month: Int): Flow<Double> =
+    fun getMonthlyIncome(year: Int, month: Int): Flow<Long> =
         dbManager.getYearDao(year).getMonthlyIncome(
             year.toString(),
             month.toString().padStart(2, '0')
         )
 
-    fun getMonthlyExpense(year: Int, month: Int): Flow<Double> =
+    fun getMonthlyExpense(year: Int, month: Int): Flow<Long> =
         dbManager.getYearDao(year).getMonthlyExpense(
             year.toString(),
             month.toString().padStart(2, '0')
         )
 
-    suspend fun getYearlyIncome(year: Int): Double =
+    suspend fun getYearlyIncome(year: Int): Long =
         dbManager.getYearDao(year).getYearlyIncome(year.toString())
 
-    suspend fun getYearlyExpense(year: Int): Double =
+    suspend fun getYearlyExpense(year: Int): Long =
         dbManager.getYearDao(year).getYearlyExpense(year.toString())
 
-    suspend fun getYearlySavingAmount(year: Int): Double =
+    suspend fun getYearlySavingAmount(year: Int): Long =
         dbManager.getYearDao(year).getYearlySavingAmount(year.toString())
 
-    suspend fun getYearlyWithdrawAmount(year: Int): Double =
+    suspend fun getYearlyWithdrawAmount(year: Int): Long =
         dbManager.getYearDao(year).getYearlyWithdrawAmount(year.toString())
 
     /** 获取所有有数据的年份（跨所有数据库） */
@@ -87,8 +87,8 @@ class TransactionRepository(
     fun search(
         startDate: Long? = null,
         endDate: Long? = null,
-        minAmount: Double? = null,
-        maxAmount: Double? = null,
+        minAmount: Long? = null,
+        maxAmount: Long? = null,
         type: TransactionType? = null,
         categoryId: Long? = null,
         keyword: String? = null

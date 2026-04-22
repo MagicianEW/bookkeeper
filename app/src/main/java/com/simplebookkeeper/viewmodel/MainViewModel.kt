@@ -16,8 +16,8 @@ import kotlinx.coroutines.launch
 import java.util.Calendar
 
 data class HomeUiState(
-    val monthlyIncome: Double = 0.0,
-    val monthlyExpense: Double = 0.0,
+    val monthlyIncome: Long = 0L,    // 单位：分
+    val monthlyExpense: Long = 0L,    // 单位：分
     val recentTransactions: List<Transaction> = emptyList(),
     val categories: Map<Long, Category> = emptyMap(),
     val currentYear: Int = Calendar.getInstance().get(Calendar.YEAR),
@@ -41,17 +41,17 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val displayMonth: StateFlow<Int> = _displayMonth.asStateFlow()
 
     // 首页数据
-    val monthlyIncome: StateFlow<Double> = combine(_displayYear, _displayMonth) { y, m ->
+    val monthlyIncome: StateFlow<Long> = combine(_displayYear, _displayMonth) { y, m ->
         Pair(y, m)
     }.flatMapLatest { (y, m) ->
         repo.getMonthlyIncome(y, m)
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0.0)
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0L)
 
-    val monthlyExpense: StateFlow<Double> = combine(_displayYear, _displayMonth) { y, m ->
+    val monthlyExpense: StateFlow<Long> = combine(_displayYear, _displayMonth) { y, m ->
         Pair(y, m)
     }.flatMapLatest { (y, m) ->
         repo.getMonthlyExpense(y, m)
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0.0)
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0L)
 
     val recentTransactions: StateFlow<List<Transaction>> =
         repo.getRecentTransactions(30)
@@ -84,8 +84,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val syncStatus: StateFlow<String?> = _syncStatus.asStateFlow()
 
     // 储蓄余额
-    val savingsBalance: StateFlow<Double> = app.settingsRepository.savingsBalance
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0.0)
+    val savingsBalance: StateFlow<Long> = app.settingsRepository.savingsBalance
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0L)
 
     // 数据库迁移状态
     val migrationState = app.dbManager.migrationState
@@ -130,8 +130,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun search(
         startDate: Long? = null,
         endDate: Long? = null,
-        minAmount: Double? = null,
-        maxAmount: Double? = null,
+        minAmount: Long? = null,
+        maxAmount: Long? = null,
         type: TransactionType? = null,
         categoryId: Long? = null,
         keyword: String? = null
@@ -146,7 +146,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     // 年度统计
-    suspend fun getYearlySummary(year: Int): Pair<Double, Double> {
+    suspend fun getYearlySummary(year: Int): Pair<Long, Long> {
         val income = repo.getYearlyIncome(year)
         val expense = repo.getYearlyExpense(year)
         return Pair(income, expense)
@@ -163,7 +163,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     // 计算年度储蓄（储蓄总额 - 支取总额）
-    suspend fun getYearlySavings(year: Int): Double {
+    suspend fun getYearlySavings(year: Int): Long {
         val savingAmount = repo.getYearlySavingAmount(year)
         val withdrawAmount = repo.getYearlyWithdrawAmount(year)
         return savingAmount - withdrawAmount

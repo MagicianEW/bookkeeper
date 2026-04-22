@@ -163,7 +163,8 @@ class DatabaseManager(private val context: Context) {
             while (cursor.moveToNext()) {
                 val id = cursor.getLong(cursor.getColumnIndexOrThrow("id"))
                 val typeStr = cursor.getString(cursor.getColumnIndexOrThrow("type"))
-                val amount = cursor.getDouble(cursor.getColumnIndexOrThrow("amount"))
+                val amountYuan = cursor.getDouble(cursor.getColumnIndexOrThrow("amount"))
+                val amountInCents = (amountYuan * 100).toLong()
                 val categoryId = cursor.getLong(cursor.getColumnIndexOrThrow("categoryId"))
                 val paymentStr = cursor.getString(cursor.getColumnIndexOrThrow("paymentMethod"))
                 val note = cursor.getString(cursor.getColumnIndexOrThrow("note")) ?: ""
@@ -175,7 +176,7 @@ class DatabaseManager(private val context: Context) {
                     Transaction(
                         id = id,
                         type = TransactionType.valueOf(typeStr),
-                        amount = amount,
+                        amount = amountInCents,
                         categoryId = categoryId,
                         paymentMethod = PaymentMethod.valueOf(paymentStr),
                         note = note,

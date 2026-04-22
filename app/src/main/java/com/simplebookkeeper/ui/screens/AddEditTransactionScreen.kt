@@ -65,10 +65,12 @@ fun AddEditTransactionScreen(
             val t = viewModel.getTransactionById(transactionId)
             if (t != null) {
                 selectedType = t.type
-                amountText = if (t.amount == t.amount.toLong().toDouble()) {
-                    t.amount.toLong().toString()
+                // amount 存为分，显示时转元
+                val yuanAmount = t.amount / 100.0
+                amountText = if (yuanAmount == yuanAmount.toLong().toDouble()) {
+                    yuanAmount.toLong().toString()
                 } else {
-                    t.amount.toString()
+                    yuanAmount.toString()
                 }
                 selectedCategoryId = t.categoryId
                 selectedPayment = t.paymentMethod
@@ -268,12 +270,12 @@ fun AddEditTransactionScreen(
             // 保存按钮
             Button(
                 onClick = {
-                    val amount = amountText.toDoubleOrNull() ?: return@Button
-                    if (amount <= 0 || selectedCategoryId == 0L) return@Button
+                    val amountYuan = amountText.toDoubleOrNull() ?: return@Button
+                    if (amountYuan <= 0 || selectedCategoryId == 0L) return@Button
                     val transaction = Transaction(
                         id = transactionId ?: 0L,
                         type = selectedType,
-                        amount = amount,
+                        amount = (amountYuan * 100).toLong(),  // 元 → 分
                         categoryId = selectedCategoryId,
                         paymentMethod = selectedPayment,
                         note = note.trim(),

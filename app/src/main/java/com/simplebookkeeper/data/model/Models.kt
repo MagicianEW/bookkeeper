@@ -21,7 +21,7 @@ data class Transaction(
     @PrimaryKey(autoGenerate = true)
     val id: Long = 0,
     val type: TransactionType,
-    val amount: Double,             // 金额（正数）
+    val amount: Long,             // 金额（单位：分），正数
     val categoryId: Long,           // 分类ID
     val paymentMethod: PaymentMethod = PaymentMethod.CASH,
     val note: String = "",          // 备注
@@ -67,17 +67,17 @@ class Converters {
 data class MonthlySummary(
     val year: Int,
     val month: Int,
-    val totalIncome: Double,
-    val totalExpense: Double
+    val totalIncome: Long,   // 单位：分
+    val totalExpense: Long   // 单位：分
 ) {
-    val balance: Double get() = totalIncome - totalExpense
+    val balance: Long get() = totalIncome - totalExpense
 }
 
 // 年度汇总（查询结果）
 data class YearlySummary(
     val year: Int,
-    val totalIncome: Double,
-    val totalExpense: Double
+    val totalIncome: Long,   // 单位：分
+    val totalExpense: Long    // 单位：分
 ) {
-    val balance: Double get() = totalIncome - totalExpense
+    val balance: Long get() = totalIncome - totalExpense
 }

@@ -58,59 +58,59 @@ interface TransactionDao {
     @Query("SELECT * FROM transactions ORDER BY date DESC LIMIT :limit")
     fun getRecent(limit: Int = 20): Flow<List<Transaction>>
 
-    // 本月收入总额
+    // 本月收入总额（单位：分）
     @Query("""
-        SELECT COALESCE(SUM(amount), 0) FROM transactions 
+        SELECT COALESCE(SUM(amount), 0) FROM transactions
         WHERE type = 'INCOME'
           AND strftime('%Y', date / 1000, 'unixepoch', 'localtime') = :year
           AND strftime('%m', date / 1000, 'unixepoch', 'localtime') = :month
     """)
-    fun getMonthlyIncome(year: String, month: String): Flow<Double>
+    fun getMonthlyIncome(year: String, month: String): Flow<Long>
 
-    // 本月支出总额
+    // 本月支出总额（单位：分）
     @Query("""
-        SELECT COALESCE(SUM(amount), 0) FROM transactions 
+        SELECT COALESCE(SUM(amount), 0) FROM transactions
         WHERE type = 'EXPENSE'
           AND strftime('%Y', date / 1000, 'unixepoch', 'localtime') = :year
           AND strftime('%m', date / 1000, 'unixepoch', 'localtime') = :month
     """)
-    fun getMonthlyExpense(year: String, month: String): Flow<Double>
+    fun getMonthlyExpense(year: String, month: String): Flow<Long>
 
-    // 某年收入总额
+    // 某年收入总额（单位：分）
     @Query("""
-        SELECT COALESCE(SUM(amount), 0) FROM transactions 
+        SELECT COALESCE(SUM(amount), 0) FROM transactions
         WHERE type = 'INCOME'
           AND strftime('%Y', date / 1000, 'unixepoch', 'localtime') = :year
     """)
-    suspend fun getYearlyIncome(year: String): Double
+    suspend fun getYearlyIncome(year: String): Long
 
-    // 某年支出总额
+    // 某年支出总额（单位：分）
     @Query("""
-        SELECT COALESCE(SUM(amount), 0) FROM transactions 
+        SELECT COALESCE(SUM(amount), 0) FROM transactions
         WHERE type = 'EXPENSE'
           AND strftime('%Y', date / 1000, 'unixepoch', 'localtime') = :year
     """)
-    suspend fun getYearlyExpense(year: String): Double
+    suspend fun getYearlyExpense(year: String): Long
 
-    // 某年储蓄总额
+    // 某年储蓄总额（单位：分）
     @Query("""
-        SELECT COALESCE(SUM(amount), 0) FROM transactions 
+        SELECT COALESCE(SUM(amount), 0) FROM transactions
         WHERE type = 'SAVING'
           AND strftime('%Y', date / 1000, 'unixepoch', 'localtime') = :year
     """)
-    suspend fun getYearlySavingAmount(year: String): Double
+    suspend fun getYearlySavingAmount(year: String): Long
 
-    // 某年支取总额
+    // 某年支取总额（单位：分）
     @Query("""
-        SELECT COALESCE(SUM(amount), 0) FROM transactions 
+        SELECT COALESCE(SUM(amount), 0) FROM transactions
         WHERE type = 'WITHDRAW'
           AND strftime('%Y', date / 1000, 'unixepoch', 'localtime') = :year
     """)
-    suspend fun getYearlyWithdrawAmount(year: String): Double
+    suspend fun getYearlyWithdrawAmount(year: String): Long
 
-    // 模糊查询（时间范围 + 金额 + 类型 + 分类 + 备注关键词）
+    // 模糊查询（时间范围 + 金额(分) + 类型 + 分类 + 备注关键词）
     @Query("""
-        SELECT * FROM transactions 
+        SELECT * FROM transactions
         WHERE (:startDate IS NULL OR date >= :startDate)
           AND (:endDate IS NULL OR date <= :endDate)
           AND (:minAmount IS NULL OR amount >= :minAmount)
@@ -123,8 +123,8 @@ interface TransactionDao {
     fun search(
         startDate: Long? = null,
         endDate: Long? = null,
-        minAmount: Double? = null,
-        maxAmount: Double? = null,
+        minAmount: Long? = null,
+        maxAmount: Long? = null,
         type: String? = null,
         categoryId: Long? = null,
         keyword: String? = null

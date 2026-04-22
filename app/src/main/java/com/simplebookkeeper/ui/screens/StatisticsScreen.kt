@@ -31,9 +31,9 @@ fun StatisticsScreen(
     val scope = rememberCoroutineScope()
     val currentYear = Calendar.getInstance().get(Calendar.YEAR)
     var selectedYear by remember { mutableIntStateOf(currentYear) }
-    var yearlyIncome by remember { mutableDoubleStateOf(0.0) }
-    var yearlyExpense by remember { mutableDoubleStateOf(0.0) }
-    var yearlySavings by remember { mutableDoubleStateOf(0.0) }
+    var yearlyIncome by remember { mutableLongStateOf(0L) }
+    var yearlyExpense by remember { mutableLongStateOf(0L) }
+    var yearlySavings by remember { mutableLongStateOf(0L) }
     val availableYears by viewModel.availableYears.collectAsState()
     val categoriesMap by viewModel.categoriesMap.collectAsState()
 
@@ -144,10 +144,10 @@ fun StatisticsScreen(
 }
 
 @Composable
-fun YearStatItem(label: String, amount: Double, color: androidx.compose.ui.graphics.Color) {
+fun YearStatItem(label: String, amountInCents: Long, color: androidx.compose.ui.graphics.Color) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Text(label, fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(modifier = Modifier.height(4.dp))
-        Text("¥%.2f".format(amount), fontWeight = FontWeight.Bold, fontSize = 16.sp, color = color)
+        Text("¥%.2f".format(amountInCents / 100.0), fontWeight = FontWeight.Bold, fontSize = 16.sp, color = color)
     }
 }

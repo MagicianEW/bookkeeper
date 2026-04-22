@@ -193,8 +193,8 @@ fun SearchScreen(
                             cal.set(java.util.Calendar.SECOND, 59)
                             cal.timeInMillis
                         },
-                        minAmount = minAmount.toDoubleOrNull(),
-                        maxAmount = maxAmount.toDoubleOrNull(),
+                        minAmount = minAmount.toDoubleOrNull()?.times(100)?.toLong(),
+                        maxAmount = maxAmount.toDoubleOrNull()?.times(100)?.toLong(),
                         type = selectedType,
                         categoryId = selectedCategoryId,
                         keyword = keyword.ifBlank { null }
