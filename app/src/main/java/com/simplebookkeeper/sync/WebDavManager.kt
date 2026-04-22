@@ -344,9 +344,11 @@ class WebDavManager(private val context: Context) {
 
                 if (downloaded == 0) SyncResult.Error("REMOTE_NOT_FOUND")
                 else {
-                    // 下载了新的 meta.db，清除单例缓存让下次读取用新数据
+                    // 下载了新的 .db 文件，清除所有 DB 缓存
+                    // Room 下次访问时会检测版本并自动执行 MIGRATION_1_2
+                    dbManager.invalidateAllYearDbs()
                     MetaDatabase.clearInstance()
-                    AppLogger.i(TAG, "downloadMulti: 成功 $downloaded 个文件")
+                    AppLogger.i(TAG, "downloadMulti: 成功 $downloaded 个文件，已清除 DB 缓存")
                     SyncResult.Success
                 }
             } catch (e: Exception) {

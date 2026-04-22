@@ -116,6 +116,11 @@ object DataExporter {
                 return@withContext false
             }
 
+            // 导入完成后清除所有 DB 缓存，让 Room 下次访问时重新打开并执行版本迁移
+            DatabaseManager.closeAll()
+            MetaDatabase.clearInstance()
+            AppLogger.i(TAG, "已清除 DB 缓存，Room 将在下次访问时自动迁移")
+
             AppLogger.i(TAG, "导入完成: $importedCount 个文件")
             importedCount > 0
         } catch (e: Exception) {

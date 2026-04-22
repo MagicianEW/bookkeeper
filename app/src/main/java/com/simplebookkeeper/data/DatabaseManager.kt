@@ -230,6 +230,22 @@ class DatabaseManager(private val context: Context) {
         yearDbs.clear()
     }
 
+    /**
+     * 关闭并移除指定年份的数据库缓存
+     * 导入/下载覆盖 .db 文件后调用，让下次访问时 Room 重新打开并执行迁移
+     */
+    fun invalidateYearDb(year: Int) {
+        yearDbs.remove(year)?.close()
+    }
+
+    /**
+     * 关闭所有年份缓存（导入/下载后调用）
+     */
+    fun invalidateAllYearDbs() {
+        yearDbs.values.forEach { it.close() }
+        yearDbs.clear()
+    }
+
     sealed class MigrationState {
         object Idle : MigrationState()
         object InProgress : MigrationState()
