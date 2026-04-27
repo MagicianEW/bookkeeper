@@ -82,6 +82,7 @@ object DataExporter {
             val zipIn = ZipInputStream(BufferedInputStream(FileInputStream(zipFile)))
             var entry = zipIn.nextEntry
             var importedCount = 0
+            var hasEncryptedFiles = false
 
             while (entry != null) {
                 when (entry.name) {
@@ -89,6 +90,11 @@ object DataExporter {
                         MetaDatabase.clearInstance()
                         val dest = DatabaseManager.getMetaDbFile(context)
                         extractFromZip(zipIn, dest)
+                        // 验证提取的文件是否为标准 SQLite（加密文件会打开失败）
+                        if (!isPlainSqlite(dest)) {
+                            hasEncryptedFiles = true
+                            AppLogger.w(TAG, "meta.db 为加密 SQLite，来自其他设备备份，跳过迁移重置")
+                        }
                         AppLogger.i(TAG, "导入 meta.db")
                         importedCount++
                     }
@@ -98,6 +104,10 @@ object DataExporter {
                             if (year != null) {
                                 val dest = DatabaseManager.getYearDbFileStatic(context, year)
                                 extractFromZip(zipIn, dest)
+                                if (!isPlainSqlite(dest)) {
+                                    hasEncryptedFiles = true
+                                    AppLogger.w(TAG, "$year 年库为加密 SQLite，来自其他设备备份，跳过迁移重置")
+                                }
                                 AppLogger.i(TAG, "导入年库: $year")
                                 importedCount++
                             }
@@ -110,22 +120,26 @@ object DataExporter {
 
             zipIn.close()
 
-            // 清除所有 DB 缓存 + 重置加密标记（导入的可能是未加密 .db）
+            // 清除所有 DB 缓存
             DatabaseManager.closeAll()
             MetaDatabase.clearInstance()
 
-            // 重置加密标记，下次启动时 initialize() 会自动执行加密迁移
-            // 注意：必须操作 app 的单例 DatabaseManager，否则 lazy _metaDb 缓存不会清
-            val app = context.applicationContext as? com.simplebookkeeper.BookkeeperApp
-            if (app != null) {
-                app.dbManager.resetForReEncryption()
+            // 只有当导入的是标准未加密 SQLite 时才重置加密标记
+            // 加密文件来自其他设备，密钥不匹配，重置会导致闪退
+            if (!hasEncryptedFiles) {
+                val app = context.applicationContext as? com.simplebookkeeper.BookkeeperApp
+                if (app != null) {
+                    app.dbManager.resetForReEncryption()
+                } else {
+                    val dbManager = DatabaseManager(context)
+                    dbManager.resetForReEncryption()
+                    dbManager.close()
+                }
+                AppLogger.i(TAG, "导入完成（未加密）: $importedCount 个文件")
             } else {
-                val dbManager = DatabaseManager(context)
-                dbManager.resetForReEncryption()
-                dbManager.close()
+                // 加密文件不触发迁移重置，保持现有加密状态
+                AppLogger.i(TAG, "导入完成（含加密文件）: $importedCount 个文件，未触发加密迁移重置")
             }
-
-            AppLogger.i(TAG, "导入完成: $importedCount 个文件")
             importedCount > 0
         } catch (e: Exception) {
             AppLogger.e(TAG, "导入 zip 失败", e)
@@ -138,9 +152,13 @@ object DataExporter {
      */
     suspend fun importLegacyDb(context: Context, dbFile: File): Boolean = withContext(Dispatchers.IO) {
         try {
-            // 不再用 isValidSqlite 校验，因为加密的 .db 不以 SQLite header 开头
             if (!dbFile.exists()) {
                 AppLogger.e(TAG, "文件不存在")
+                return@withContext false
+            }
+            // 拒绝加密的 SQLite 文件（其他设备加密的库无法迁移，会导致崩溃）
+            if (!isPlainSqlite(dbFile)) {
+                AppLogger.e(TAG, "文件为加密 SQLite 或损坏，无法导入: ${dbFile.name}")
                 return@withContext false
             }
 
@@ -181,6 +199,31 @@ object DataExporter {
         val header = ByteArray(16)
         FileInputStream(file).use { it.read(header) }
         return "SQLite format 3\u0000".toByteArray().contentEquals(header)
+    }
+
+    /**
+     * 检测 SQLite 文件是否为标准未加密数据库
+     * 同时验证 SQLite header 和 schema 完整性
+     */
+    fun isPlainSqlite(file: File): Boolean {
+        if (!file.exists()) return false
+        try {
+            val db = SQLiteDatabase.openDatabase(
+                file.absolutePath, null, SQLiteDatabase.OPEN_READONLY
+            )
+            // 验证 schema 完整性
+            val cursor = db.rawQuery(
+                "SELECT name FROM sqlite_master WHERE type='table' LIMIT 1",
+                null
+            )
+            val hasTables = cursor.count > 0
+            cursor.close()
+            db.close()
+            return hasTables
+        } catch (e: Exception) {
+            // 无法打开 = 加密库或损坏
+            return false
+        }
     }
 
     private fun addToZip(zipOut: ZipOutputStream, entryName: String, file: File) {

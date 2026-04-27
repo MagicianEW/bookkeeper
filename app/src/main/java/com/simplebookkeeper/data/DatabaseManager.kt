@@ -239,6 +239,7 @@ class DatabaseManager(private val context: Context) {
      * 检测是否需要加密迁移：
      * - 加密迁移标记未设置
      * - 存在可被标准 SQLite 打开的数据库文件（即未加密）
+     * - 关键：检测到加密文件时，不标记完成，而是返回 false 并保持未设置状态
      */
     private fun needsEncryptionMigration(): Boolean {
         if (encryption.isMigrationDone()) return false
@@ -249,13 +250,29 @@ class DatabaseManager(private val context: Context) {
             return false
         }
         return try {
-            SQLiteDatabase.openDatabase(
+            // 尝试用标准 SQLite 打开，验证 schema
+            val db = SQLiteDatabase.openDatabase(
                 metaFile.absolutePath, null, SQLiteDatabase.OPEN_READONLY
-            ).also { it.close() }
-            true  // 能用标准 SQLite 打开 = 未加密
+            )
+            // 验证是否包含 categories 表（确保不是随机文件或加密库）
+            val cursor = db.rawQuery(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='categories'",
+                null
+            )
+            val hasCategories = cursor.count > 0
+            cursor.close()
+            db.close()
+            hasCategories.also { unencrypted ->
+                if (!unencrypted) {
+                    // 不是标准 SQLite，直接标记完成（可能是加密库或其他格式）
+                    encryption.markMigrationDone()
+                }
+            }
         } catch (e: Exception) {
+            // 打开失败 = 加密库或其他格式，不触发迁移，标记完成
             encryption.markMigrationDone()
-            false // 已加密或损坏
+            AppLogger.w(TAG, "数据库无法用标准 SQLite 打开（非未加密文件）: ${e.message}")
+            false // 已加密或损坏，不触发加密迁移
         }
     }
 

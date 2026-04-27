@@ -90,7 +90,10 @@ class WebDavManager(private val context: Context) {
                 cleanupOldBackups(config, fileName)
             }
             // 2. 上传新文件
-            uploadFile(config, fileName, localFile)
+            val uploaded = uploadFile(config, fileName, localFile)
+            if (!uploaded) return@withContext false
+            // 上传成功
+            return@withContext true
         } catch (e: Exception) {
             AppLogger.e(TAG, "uploadWithBackup 异常: $fileName", e)
             false
@@ -392,7 +395,15 @@ class WebDavManager(private val context: Context) {
             }
 
             if (downloadFile(config, backup.fileName, destFile)) {
-                dbManager.resetForReEncryption()
+                // 检测下载的文件是否为未加密 SQLite
+                // 如果是加密的（其他设备备份），不触发迁移重置，避免密钥不匹配闪退
+                val isPlainDb = DataExporter.isPlainSqlite(destFile)
+                if (isPlainDb) {
+                    dbManager.resetForReEncryption()
+                    AppLogger.i(TAG, "restoreFromBackup: 未加密备份，已重置加密迁移标记")
+                } else {
+                    AppLogger.w(TAG, "restoreFromBackup: 加密备份，未重置加密标记（密钥可能不匹配）")
+                }
                 AppLogger.i(TAG, "restoreFromBackup: 恢复成功 ${backup.fileName} → ${destFile.name}")
                 SyncResult.Success
             } else {
@@ -588,9 +599,17 @@ class WebDavManager(private val context: Context) {
 
                 if (downloaded == 0) SyncResult.Error("REMOTE_NOT_FOUND")
                 else {
-                    // 清除所有 DB 缓存 + 重置加密标记（下载的可能是未加密 .db）
-                    dbManager.resetForReEncryption()
-                    AppLogger.i(TAG, "downloadMulti: 成功 $downloaded 个文件，已重置加密标记")
+                    // 检查下载的文件中是否存在未加密的 SQLite，有才重置加密标记
+                    // 其他设备加密的备份不应触发迁移（密钥不匹配）
+                    val anyPlainDb = (listOf(dbManager.metaDbFile) + dbManager.getAllYearDbFiles())
+                        .filter { it.exists() }
+                        .any { DataExporter.isPlainSqlite(it) }
+                    if (anyPlainDb) {
+                        dbManager.resetForReEncryption()
+                        AppLogger.i(TAG, "downloadMulti: 成功 $downloaded 个文件，存在未加密文件，已重置加密标记")
+                    } else {
+                        AppLogger.w(TAG, "downloadMulti: 成功 $downloaded 个文件，均为加密文件，未重置加密标记")
+                    }
                     SyncResult.Success
                 }
             } catch (e: Exception) {
