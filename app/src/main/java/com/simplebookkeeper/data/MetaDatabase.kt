@@ -5,6 +5,7 @@ import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.TypeConverters
+import androidx.sqlite.db.SupportSQLiteOpenHelper
 import com.simplebookkeeper.data.dao.CategoryDao
 import com.simplebookkeeper.data.model.Category
 import com.simplebookkeeper.data.model.Converters
@@ -33,13 +34,17 @@ abstract class MetaDatabase : RoomDatabase() {
         @Volatile
         private var INSTANCE: MetaDatabase? = null
 
-        fun getInstance(context: Context): MetaDatabase {
+        fun getInstance(context: Context, factory: SupportSQLiteOpenHelper.Factory? = null): MetaDatabase {
             return INSTANCE ?: synchronized(this) {
-                val instance = Room.databaseBuilder(
+                val builder = Room.databaseBuilder(
                     context.applicationContext,
                     MetaDatabase::class.java,
                     DB_NAME
                 )
+                if (factory != null) {
+                    builder.openHelperFactory(factory)
+                }
+                val instance = builder
                     .addCallback(object : Callback() {
                         override fun onCreate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
                             super.onCreate(db)

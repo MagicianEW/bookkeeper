@@ -2,7 +2,7 @@
 
 > 一款轻量、简洁、注重隐私的 Android 个人记账应用，支持收入/支出管理、储蓄追踪、WebDAV 云端同步
 
-**版本**：v 0.3.5　｜　**最低系统**：Android 12（API 31）
+**版本**：v 0.3.6　｜　**最低系统**：Android 12（API 31）
 
 ---
 
@@ -28,7 +28,8 @@
 | 功能 | 说明 |
 |------|------|
 | 密码保护 | 设置 4 位以上数字/字母密码，下次启动需验证 |
-| 生物识别 | 支持指纹 / 面容解锁（硬件不支持时自动隐藏） |
+| 生物识别 | 支持指纹 / 面容解锁（硬件不支持时自动隐藏），关闭时需密码验证 |
+| 数据库加密 | SQLCipher AES-256 全库加密，密钥由 Android Keystore 托管 |
 | WebDAV 云同步 | 配置私有云服务器，数据库自动备份到云端 |
 | 数据导出/导入 | `.db` 文件格式，支持完整数据迁移 |
 | 导出日志 | 导出运行日志文本，便于排查同步问题 |
@@ -73,6 +74,8 @@
 - 云同步完全由用户自主配置，默认关闭
 - 密码使用哈希存储（DataStore），不明文保存
 - 可选生物识别二次验证
+- **数据库加密**：SQLCipher AES-256 加密，密钥由 Android Keystore 管理，存储于 EncryptedSharedPreferences
+- 关闭生物识别需要密码二次验证
 
 ---
 
@@ -82,11 +85,11 @@
 |------|------|
 | 语言 | Kotlin 2.0 |
 | UI | Jetpack Compose + Material3 |
-| 数据库 | Room（WAL 模式） |
+| 数据库 | Room（WAL 模式）+ SQLCipher 加密 |
 | 配置存储 | DataStore Preferences |
 | 网络 | OkHttp 4（WebDAV） |
 | 后台任务 | WorkManager |
-| 安全 | Biometric API + Security Crypto |
+| 安全 | Biometric API + Security Crypto + SQLCipher |
 | 架构 | MVVM（ViewModel + Flow + Repository） |
 | 适配 | 手机（底部导航栏）+ 平板（侧边 NavigationRail） |
 
@@ -97,7 +100,7 @@
 **环境要求：**
 - Android Studio Hedgehog 或更高版本
 - JDK 17+
-- Android SDK API 36
+- Android SDK API 35
 
 **步骤：**
 
@@ -122,6 +125,7 @@ app/build/outputs/apk/debug/app-debug.apk
 
 | 版本 | 说明 |
 |------|------|
+| v 0.3.6 | **安全增强**：SQLCipher AES-256 数据库加密（Android Keystore 密钥管理）；修复 WebDAV 备份文件名解析错误；修复冲突解决"以本地为准"实际未上传的问题；修复 WebDAV PROPFIND 正则大小写兼容；修复加密迁移后分类/交易重复；关闭生物识别增加密码二次验证 |
 | v 0.3.5 | 修复 WebDAV 同步空数据库问题；优化同步冲突处理逻辑 |
 | v 0.3.0 | **重大更新**：数据库按年分库（bookkeeper_YYYY.db）+ 元数据库（bookkeeper_meta.db），解决单库膨胀问题；WebDAV 改为多文件同步+MD5校验；导入/导出改为 .zip 格式打包；迁移时自动拆分旧库 |
 | v 0.2.14 | 修复记账页分类添加后不显示、修复云端同步覆盖本地数据问题、修复本地导入数据不生效 |
@@ -138,6 +142,8 @@ app/build/outputs/apk/debug/app-debug.apk
 ```
 app/src/main/java/com/simplebookkeeper/
 ├── BookkeeperApp.kt          # Application 入口
+├── crypto/
+│   └── DatabaseEncryption.kt  # SQLCipher 密钥管理（Android Keystore）
 ├── data/
 │   ├── AppDatabase.kt        # Room 数据库 & 默认分类（迁移兼容）
 │   ├── DatabaseManager.kt    # 按年分库管理器（LRU缓存）

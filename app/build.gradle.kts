@@ -7,14 +7,14 @@ plugins {
 
 android {
     namespace = "com.simplebookkeeper"
-    compileSdk = 36
+    compileSdk = 35
 
     defaultConfig {
         applicationId = "com.simplebookkeeper"
         minSdk = 31
-        targetSdk = 36
+        targetSdk = 35
         versionCode = 305
-        versionName = "0.3.5"
+        versionName = "0.3.6"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -32,7 +32,9 @@ android {
             signingConfig = signingConfigs.getByName("projectDebug")
         }
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
+            isShrinkResources = true
+            signingConfig = null
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
     }
@@ -79,9 +81,13 @@ dependencies {
     implementation("androidx.navigation:navigation-compose:2.7.7")
 
     // Room
-    implementation("androidx.room:room-runtime:2.6.1")
-    implementation("androidx.room:room-ktx:2.6.1")
-    ksp("androidx.room:room-compiler:2.6.1")
+    implementation("androidx.room:room-runtime:2.7.0")
+    implementation("androidx.room:room-ktx:2.7.0")
+    ksp("androidx.room:room-compiler:2.7.0")
+
+    // SQLCipher (database encryption)
+    implementation("net.zetetic:android-database-sqlcipher:4.5.4")
+    implementation("androidx.sqlite:sqlite-ktx:2.4.0")
 
     // Security
     implementation("androidx.security:security-crypto:1.1.0-alpha06")

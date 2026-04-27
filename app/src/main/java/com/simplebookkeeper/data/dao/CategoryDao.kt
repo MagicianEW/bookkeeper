@@ -34,4 +34,7 @@ interface CategoryDao {
 
     @Query("SELECT * FROM categories ORDER BY type, sortOrder, id")
     suspend fun getAllSync(): List<Category>
+
+    @Query("DELETE FROM categories")
+    suspend fun deleteAll()
 }

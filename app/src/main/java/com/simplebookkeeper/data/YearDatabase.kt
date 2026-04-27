@@ -7,6 +7,7 @@ import androidx.room.RoomDatabase
 import androidx.room.TypeConverters
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
+import androidx.sqlite.db.SupportSQLiteOpenHelper
 import com.simplebookkeeper.data.dao.TransactionDao
 import com.simplebookkeeper.data.model.Converters
 import com.simplebookkeeper.data.model.Transaction
@@ -37,12 +38,16 @@ abstract class YearDatabase : RoomDatabase() {
          * 获取指定年份的数据库实例
          * 缓存在 DatabaseManager 中统一管理，这里只提供创建方法
          */
-        fun create(context: Context, year: Int): YearDatabase {
-            return Room.databaseBuilder(
+        fun create(context: Context, year: Int, factory: SupportSQLiteOpenHelper.Factory? = null): YearDatabase {
+            val builder = Room.databaseBuilder(
                 context.applicationContext,
                 YearDatabase::class.java,
                 dbName(year)
             )
+            if (factory != null) {
+                builder.openHelperFactory(factory)
+            }
+            return builder
                 .addMigrations(MIGRATION_1_2)
                 .fallbackToDestructiveMigration()
                 .build()

@@ -110,17 +110,20 @@ object DataExporter {
 
             zipIn.close()
 
-            // 校验
-            val metaFile = DatabaseManager.getMetaDbFile(context)
-            if (metaFile.exists() && !isValidSqlite(metaFile)) {
-                AppLogger.e(TAG, "meta.db 校验失败")
-                return@withContext false
-            }
-
-            // 清除所有 DB 缓存（Room 会自动执行 MIGRATION_1_2）
+            // 清除所有 DB 缓存 + 重置加密标记（导入的可能是未加密 .db）
             DatabaseManager.closeAll()
             MetaDatabase.clearInstance()
-            AppLogger.i(TAG, "已清除 DB 缓存")
+
+            // 重置加密标记，下次启动时 initialize() 会自动执行加密迁移
+            // 注意：必须操作 app 的单例 DatabaseManager，否则 lazy _metaDb 缓存不会清
+            val app = context.applicationContext as? com.simplebookkeeper.BookkeeperApp
+            if (app != null) {
+                app.dbManager.resetForReEncryption()
+            } else {
+                val dbManager = DatabaseManager(context)
+                dbManager.resetForReEncryption()
+                dbManager.close()
+            }
 
             AppLogger.i(TAG, "导入完成: $importedCount 个文件")
             importedCount > 0
@@ -135,8 +138,9 @@ object DataExporter {
      */
     suspend fun importLegacyDb(context: Context, dbFile: File): Boolean = withContext(Dispatchers.IO) {
         try {
-            if (!isValidSqlite(dbFile)) {
-                AppLogger.e(TAG, "不是有效的 SQLite 文件")
+            // 不再用 isValidSqlite 校验，因为加密的 .db 不以 SQLite header 开头
+            if (!dbFile.exists()) {
+                AppLogger.e(TAG, "文件不存在")
                 return@withContext false
             }
 
@@ -146,10 +150,15 @@ object DataExporter {
             val legacyFile = context.getDatabasePath(AppDatabase.DB_NAME)
             dbFile.copyTo(legacyFile, overwrite = true)
 
-            // 触发迁移
-            val dbManager = DatabaseManager(context)
-            dbManager.initialize()
-            dbManager.close()
+            // 重置加密标记 + 触发迁移（含加密迁移检测）
+            val app = context.applicationContext as? com.simplebookkeeper.BookkeeperApp
+            if (app != null) {
+                app.dbManager.resetForReEncryption()
+            } else {
+                val dbManager = DatabaseManager(context)
+                dbManager.resetForReEncryption()
+                dbManager.close()
+            }
 
             true
         } catch (e: Exception) {

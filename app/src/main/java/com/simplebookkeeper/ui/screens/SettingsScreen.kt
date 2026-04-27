@@ -16,8 +16,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.foundation.text.KeyboardActions
+
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.simplebookkeeper.BookkeeperApp
@@ -33,6 +38,7 @@ import com.simplebookkeeper.sync.SyncResult
 import com.simplebookkeeper.sync.SyncWorker
 import com.simplebookkeeper.util.AppLogger
 import com.simplebookkeeper.viewmodel.MainViewModel
+import androidx.fragment.app.FragmentActivity
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import java.io.File
@@ -64,6 +70,7 @@ fun SettingsScreen(
     // 对话框状态
     var showSetPasswordDialog by remember { mutableStateOf(false) }
     var showDisablePasswordDialog by remember { mutableStateOf(false) }
+    var showPasswordVerifyForDisable by remember { mutableStateOf(false) }  // 关闭生物识别时密码验证
     var showWebDavSection by remember { mutableStateOf(false) }
     var showAddCategoryDialog by remember { mutableStateOf(false) }
     var showAboutDialog by remember { mutableStateOf(false) }
@@ -125,7 +132,7 @@ fun SettingsScreen(
         uri?.let {
             scope.launch {
                 val success = importData(context, it)
-                syncMessage = if (success) "✅ 导入成功，数据已更新" else "❌ 导入失败，文件格式不正确"
+                syncMessage = if (success) "✅ 导入成功，请重启应用以完成数据迁移" else "❌ 导入失败，文件格式不正确"
             }
         }
     }
@@ -191,7 +198,35 @@ fun SettingsScreen(
                             subtitle = "使用指纹或面容解锁",
                             checked = isBiometricEnabled,
                             onCheckedChange = { enabled ->
-                                scope.launch { app.passwordManager.setBiometricEnabled(enabled) }
+                                if (enabled) {
+                                    // 开启时先验证生物识别
+                                    val activity = context as? FragmentActivity
+                                    if (activity != null) {
+                                        app.biometricAuth.authenticate(
+                                            activity = activity,
+                                            onSuccess = {
+                                                scope.launch { app.passwordManager.setBiometricEnabled(true) }
+                                            },
+                                            onFailed = { },
+                                            onError = { }
+                                        )
+                                    }
+                                } else {
+                                    // 关闭时也要验证：优先生物识别，失败则密码验证
+                                    val activity = context as? FragmentActivity
+                                    if (activity != null) {
+                                        app.biometricAuth.authenticate(
+                                            activity = activity,
+                                            onSuccess = {
+                                                scope.launch { app.passwordManager.setBiometricEnabled(false) }
+                                            },
+                                            onFailed = { /* 生物识别失败，尝试密码 */
+                                                showPasswordVerifyForDisable = true
+                                            },
+                                            onError = { }
+                                        )
+                                    }
+                                }
                             }
                         )
                     }
@@ -366,7 +401,7 @@ fun SettingsScreen(
                             val backups = app.webDavManager.getRemoteBackups(config)
                             isSyncing = false
                             if (backups.isEmpty()) {
-                                syncMessage = "未找到云端备份"
+                                syncMessage = "❌ 未找到云端备份（请先同步一次）"
                             } else {
                                 backupVersions = backups
                                 backupConfig = config
@@ -452,7 +487,7 @@ fun SettingsScreen(
     // 显示消息
     syncMessage?.let { msg ->
         LaunchedEffect(msg) {
-            kotlinx.coroutines.delay(3000)
+            kotlinx.coroutines.delay(5000)
             syncMessage = null
         }
         Snackbar(
@@ -495,6 +530,63 @@ fun SettingsScreen(
         )
     }
 
+    // 关闭生物识别时：密码验证对话框
+    if (showPasswordVerifyForDisable) {
+        var passwordInput by remember { mutableStateOf("") }
+        var verifyError by remember { mutableStateOf<String?>(null) }
+        AlertDialog(
+            onDismissRequest = { showPasswordVerifyForDisable = false },
+            title = { Text("验证密码") },
+            text = {
+                Column {
+                    Text("请输入密码以关闭生物识别", style = MaterialTheme.typography.bodyMedium)
+                    Spacer(modifier = Modifier.height(12.dp))
+                    OutlinedTextField(
+                        value = passwordInput,
+                        onValueChange = { passwordInput = it; verifyError = null },
+                        label = { Text("密码") },
+                        singleLine = true,
+                        isError = verifyError != null,
+                        modifier = Modifier.fillMaxWidth(),
+                        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done),
+                        keyboardActions = androidx.compose.foundation.text.KeyboardActions(
+                            onDone = {
+                                scope.launch {
+                                    val ok = app.passwordManager.verifyPassword(passwordInput)
+                                    if (ok) {
+                                        app.passwordManager.setBiometricEnabled(false)
+                                        showPasswordVerifyForDisable = false
+                                    } else {
+                                        verifyError = "密码错误"
+                                    }
+                                }
+                            }
+                        )
+                    )
+                    verifyError?.let {
+                        Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    scope.launch {
+                        val ok = app.passwordManager.verifyPassword(passwordInput)
+                        if (ok) {
+                            app.passwordManager.setBiometricEnabled(false)
+                            showPasswordVerifyForDisable = false
+                        } else {
+                            verifyError = "密码错误"
+                        }
+                    }
+                }) { Text("确认") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showPasswordVerifyForDisable = false }) { Text("取消") }
+            }
+        )
+    }
+
     // 添加分类对话框
     if (showAddCategoryDialog) {
         AddCategoryDialog(
@@ -521,7 +613,7 @@ fun SettingsScreen(
                     scope.launch {
                         val cfg = conflictConfig ?: return@launch
                         if (useLocal) {
-                            when (val result = app.webDavManager.syncMulti(cfg, app.dbManager)) {
+                            when (val result = app.webDavManager.syncMulti(cfg, app.dbManager, forceOverwrite = true)) {
                                 is SyncResult.Success, is SyncResult.SizeMismatch -> syncMessage = "✅ 已以本地数据为准同步到云端"
                                 is SyncResult.Error -> syncMessage = "❌ 同步失败: ${result.message}"
                                 else -> {}
@@ -557,7 +649,7 @@ fun SettingsScreen(
                     scope.launch {
                         val cfg = conflictConfig ?: return@launch
                         if (useLocal) {
-                            when (val result = app.webDavManager.syncMulti(cfg, app.dbManager)) {
+                            when (val result = app.webDavManager.syncMulti(cfg, app.dbManager, forceOverwrite = true)) {
                                 is SyncResult.Success, is SyncResult.SizeMismatch -> syncMessage = "✅ 已以本地数据为准覆盖云端"
                                 is SyncResult.Error -> syncMessage = "❌ 上传失败: ${result.message}"
                                 else -> {}
@@ -581,29 +673,29 @@ fun SettingsScreen(
                 }
             )
         }
+    }
 
-        // 备份版本选择对话框
-        if (showBackupDialog) {
-            BackupVersionDialog(
-                versions = backupVersions,
-                onSelect = { version ->
-                    scope.launch {
-                        val cfg = backupConfig ?: return@launch
-                        syncMessage = "正在恢复 ${version.displayName}..."
-                        isSyncing = true
-                        val result = app.webDavManager.restoreFromBackup(cfg, app.dbManager, version)
-                        isSyncing = false
-                        syncMessage = when (result) {
-                            is SyncResult.Success -> "✅ 已恢复到 ${version.displayName}，请重启应用"
-                            is SyncResult.Error -> "❌ 恢复失败: ${result.message}"
-                            else -> "恢复完成"
-                        }
-                        showBackupDialog = false
+    // 备份版本选择对话框（独立于冲突对话框）
+    if (showBackupDialog) {
+        BackupVersionDialog(
+            versions = backupVersions,
+            onSelect = { version ->
+                scope.launch {
+                    val cfg = backupConfig ?: return@launch
+                    syncMessage = "正在恢复 ${version.displayName}..."
+                    isSyncing = true
+                    val result = app.webDavManager.restoreFromBackup(cfg, app.dbManager, version)
+                    isSyncing = false
+                    syncMessage = when (result) {
+                        is SyncResult.Success -> "✅ 已恢复到 ${version.displayName}，请重启应用"
+                        is SyncResult.Error -> "❌ 恢复失败: ${result.message}"
+                        else -> "恢复完成"
                     }
-                },
-                onDismiss = { showBackupDialog = false }
-            )
-        }
+                    showBackupDialog = false
+                }
+            },
+            onDismiss = { showBackupDialog = false }
+        )
     }
 }
 
@@ -969,8 +1061,9 @@ suspend fun importData(context: Context, uri: Uri): Boolean {
                 AppLogger.i("SettingsScreen", "检测到 zip 格式，使用多文件导入")
                 DataExporter.importFromZip(context, tempFile)
             }
-            DataExporter.isValidSqlite(tempFile) -> {
-                AppLogger.i("SettingsScreen", "检测到旧版 db 格式，使用迁移导入")
+            tempFile.exists() && tempFile.length() > 0 -> {
+                // 不管是未加密 SQLite 还是加密 SQLCipher .db，都尝试导入
+                AppLogger.i("SettingsScreen", "检测到 db 文件，使用迁移导入")
                 DataExporter.importLegacyDb(context, tempFile)
             }
             else -> {
@@ -1032,7 +1125,7 @@ fun AboutDialog(onDismiss: () -> Unit) {
                     color = MaterialTheme.colorScheme.primaryContainer
                 ) {
                     Text(
-                        "v 0.3.0",
+                        "v 0.3.6",
                         style = MaterialTheme.typography.labelLarge,
                         color = MaterialTheme.colorScheme.onPrimaryContainer,
                         modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)

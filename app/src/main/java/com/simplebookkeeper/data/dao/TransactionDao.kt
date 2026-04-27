@@ -135,4 +135,8 @@ interface TransactionDao {
     suspend fun getAll(): List<Transaction>
 
     // getAvailableYears() 已移至 DatabaseManager 文件扫描实现
+
+    /** 全量删除（迁移时防止重复插入） */
+    @Query("DELETE FROM transactions")
+    suspend fun deleteAll()
 }

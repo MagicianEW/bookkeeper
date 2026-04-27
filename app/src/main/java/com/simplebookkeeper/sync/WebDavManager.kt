@@ -305,7 +305,7 @@ class WebDavManager(private val context: Context) {
                 .build()
             val response = client.newCall(request).execute()
             val html = response.body?.string() ?: return@withContext emptyList()
-            val regex = Regex("<d:href[^>]*>([^<]+)</d:href>", RegexOption.IGNORE_CASE)
+            val regex = Regex("<[a-zA-Z0-9]*:??href[^>]*>([^<]+)</[a-zA-Z0-9]*:??href>", RegexOption.IGNORE_CASE)
             regex.findAll(html)
                 .map { it.groupValues[1].substringAfterLast("/").substringAfterLast("%2F").substringAfterLast("%2f") }
                 .filter { it.isNotBlank() && it != REMOTE_FOLDER }
@@ -319,18 +319,37 @@ class WebDavManager(private val context: Context) {
     /** 获取远程备份版本列表（按时间倒序） */
     suspend fun getRemoteBackups(config: WebDavConfig): List<BackupVersion> = withContext(Dispatchers.IO) {
         try {
+            ensureRemoteFolder(config)
             val remoteFiles = getRemoteFileList(config)
             val bakPattern = Regex("""(.+?)_(\d{4}-\d{2}-\d{2})\.bak""")
-            remoteFiles.mapNotNull { fileName ->
-                val match = bakPattern.matchEntire(fileName) ?: return@mapNotNull null
+            val dbPattern = Regex("""(meta|bookkeeper_\d{4})\.db""")
+            val versions = mutableListOf<BackupVersion>()
+
+            // 1. .bak 备份文件
+            remoteFiles.forEach { fileName ->
+                val match = bakPattern.matchEntire(fileName) ?: return@forEach
                 val dateStr = match.groupValues[2]
                 val date = SimpleDateFormat("yyyy-MM-dd", Locale.US).parse(dateStr)
-                BackupVersion(
+                versions.add(BackupVersion(
                     fileName = fileName,
-                    displayName = dateStr,
+                    displayName = "备份 $dateStr",
                     timestamp = date?.time ?: 0L
-                )
-            }.sortedByDescending { it.timestamp }
+                ))
+            }
+
+            // 2. 当前版本的 .db 文件（也算可恢复的版本）
+            remoteFiles.forEach { fileName ->
+                if (!dbPattern.matches(fileName)) return@forEach
+                val lastModified = getRemoteLastModified(config, fileName) ?: System.currentTimeMillis()
+                val dateStr = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date(lastModified))
+                versions.add(BackupVersion(
+                    fileName = fileName,
+                    displayName = "当前 $fileName ($dateStr)",
+                    timestamp = lastModified
+                ))
+            }
+
+            versions.sortedByDescending { it.timestamp }
         } catch (e: Exception) {
             AppLogger.e(TAG, "getRemoteBackups 异常", e)
             emptyList()
@@ -350,20 +369,30 @@ class WebDavManager(private val context: Context) {
             dbManager.close()
             kotlinx.coroutines.delay(100)
 
-            // 下载 .bak 文件，去掉 .bak 后缀作为目标文件名
-            val originalName = backup.fileName.removeSuffix(".bak")
-                .substringBeforeLast("_") + ".db"
-            val destFile: File = if (originalName == "meta.db") {
+            // 解析目标文件名：.bak → 去掉日期后缀，.db → 直接用
+            val targetName = if (backup.fileName.endsWith(".bak")) {
+                // meta.db_2026-04-25.bak → meta.db
+                // bookkeeper_2025.db_2026-04-25.bak → bookkeeper_2025.db
+                val withoutBak = backup.fileName.removeSuffix(".bak")  // bookkeeper_2025.db_2026-04-25
+                // 用正则移除 _YYYY-MM-DD 后缀，而不是 substringBeforeLast
+                // 因为文件名本身可能含 _（如 bookkeeper_2025.db）
+                val dateSuffixPattern = Regex("_\\d{4}-\\d{2}-\\d{2}$")
+                val withoutDate = withoutBak.replace(dateSuffixPattern, "")  // bookkeeper_2025.db
+                withoutDate
+            } else {
+                // 当前版本 .db 文件，直接下载覆盖
+                backup.fileName
+            }
+            val destFile: File = if (targetName == "meta.db") {
                 dbManager.metaDbFile
             } else {
-                val year = originalName.removePrefix("bookkeeper_").removeSuffix(".db").toIntOrNull()
-                    ?: return@withContext SyncResult.Error("无法解析备份文件名: ${backup.fileName}")
+                val year = targetName.removePrefix("bookkeeper_").removeSuffix(".db").toIntOrNull()
+                    ?: return@withContext SyncResult.Error("无法解析文件名: $targetName")
                 dbManager.getYearDbFile(year)
             }
 
             if (downloadFile(config, backup.fileName, destFile)) {
-                dbManager.invalidateAllYearDbs()
-                MetaDatabase.clearInstance()
+                dbManager.resetForReEncryption()
                 AppLogger.i(TAG, "restoreFromBackup: 恢复成功 ${backup.fileName} → ${destFile.name}")
                 SyncResult.Success
             } else {
@@ -399,8 +428,9 @@ class WebDavManager(private val context: Context) {
 
     /**
      * 多文件同步：关闭所有 DB 连接后逐文件 MD5 比对上传
+     * @param forceOverwrite 强制用本地覆盖远程（冲突解决后"以本地为准"时使用）
      */
-    suspend fun syncMulti(config: WebDavConfig, dbManager: DatabaseManager): SyncResult =
+    suspend fun syncMulti(config: WebDavConfig, dbManager: DatabaseManager, forceOverwrite: Boolean = false): SyncResult =
         withContext(Dispatchers.IO) {
             AppLogger.i(TAG, "syncMulti → 开始")
             try {
@@ -438,34 +468,36 @@ class WebDavManager(private val context: Context) {
                     // 本地为空的情况
                     if (localSize == 0L) {
                         if (!remoteExists || remoteSize == 0L) {
-                            // 两边都空或远程不存在，跳过
                             AppLogger.i(TAG, "syncSingleFile: $remoteName 两边都空，跳过")
                             tmp.delete()
                             return true
                         }
-                        // 远程有数据但本地空 → 需要用户确认是否下载覆盖
                         AppLogger.w(TAG, "syncSingleFile: $remoteName 本地为空但远程有 ${remoteSize}B 数据")
                         tmp.delete()
-                        // 不加入冲突列表，让 syncMulti 返回 Success
-                        // 用户下次 downloadMulti 会下载远程数据
                         return true
                     }
 
                     if (!remoteExists) {
-                        // 远程不存在，直接上传（带版本备份）
                         tmp.delete()
+                        return uploadWithBackup(config, remoteName, localFile)
+                    }
+
+                    // 强制覆盖模式：直接备份远程 + 上传本地
+                    if (forceOverwrite) {
+                        tmp.delete()
+                        AppLogger.i(TAG, "syncSingleFile: $remoteName 强制覆盖上传")
                         return uploadWithBackup(config, remoteName, localFile)
                     }
 
                     // 两边都有数据，比较文件大小
                     if (localSize != remoteSize) {
-                        // 大小不一致：需要用户确认
                         val localMd5 = fileMd5(localFile)
                         val remoteMd5 = fileMd5(tmp)
                         if (localMd5 != remoteMd5) {
                             localLargerFiles.add(ConflictFile(remoteName, localMd5, remoteMd5))
                         }
                         tmp.delete()
+                        // 不自动上传，等用户确认后 forceOverwrite 重跑
                         return true
                     }
 
@@ -556,10 +588,9 @@ class WebDavManager(private val context: Context) {
 
                 if (downloaded == 0) SyncResult.Error("REMOTE_NOT_FOUND")
                 else {
-                    // 清除所有 DB 缓存（Room 会自动执行 MIGRATION_1_2）
-                    dbManager.invalidateAllYearDbs()
-                    MetaDatabase.clearInstance()
-                    AppLogger.i(TAG, "downloadMulti: 成功 $downloaded 个文件，已清除 DB 缓存")
+                    // 清除所有 DB 缓存 + 重置加密标记（下载的可能是未加密 .db）
+                    dbManager.resetForReEncryption()
+                    AppLogger.i(TAG, "downloadMulti: 成功 $downloaded 个文件，已重置加密标记")
                     SyncResult.Success
                 }
             } catch (e: Exception) {
