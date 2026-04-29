@@ -369,7 +369,6 @@ class WebDavManager(private val context: Context) {
             AppLogger.i(TAG, "restoreFromBackup: 从 ${backup.fileName} 恢复")
             DatabaseManager.closeAll()
             MetaDatabase.clearInstance()
-            dbManager.close()
             kotlinx.coroutines.delay(100)
 
             // 解析目标文件名：.bak → 去掉日期后缀，.db → 直接用
@@ -447,7 +446,6 @@ class WebDavManager(private val context: Context) {
             try {
                 DatabaseManager.closeAll()
                 MetaDatabase.clearInstance()
-                dbManager.close()
                 kotlinx.coroutines.delay(100) // 等待 WAL 文件锁释放
                 ensureRemoteFolder(config)
 
@@ -573,7 +571,6 @@ class WebDavManager(private val context: Context) {
             try {
                 DatabaseManager.closeAll()
                 MetaDatabase.clearInstance()
-                dbManager.close()
                 kotlinx.coroutines.delay(100)
                 ensureRemoteFolder(config)
 

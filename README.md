@@ -2,7 +2,7 @@
 
 > 一款轻量、简洁、注重隐私的 Android 个人记账应用，支持收入/支出管理、储蓄追踪、WebDAV 云端同步
 
-**版本**：v 0.3.6　｜　**最低系统**：Android 12（API 31）
+**版本**：v 0.3.7　｜　**最低系统**：Android 12（API 31）
 
 ---
 
@@ -125,6 +125,7 @@ app/build/outputs/apk/debug/app-debug.apk
 
 | 版本 | 说明 |
 |------|------|
+| v 0.3.7 | **Bug 修复**：修复 SyncWorker 单例冲突导致的数据库连接泄漏；修复跨年搜索失效；修复应用启动时数据库初始化未等待完成；修复密码哈希安全性（PBKDF2+盐值）；修复同步后 DatabaseManager 引用失效 |
 | v 0.3.6 | **安全增强**：SQLCipher AES-256 数据库加密（Android Keystore 密钥管理）；修复 WebDAV 备份文件名解析错误；修复冲突解决"以本地为准"实际未上传的问题；修复 WebDAV PROPFIND 正则大小写兼容；修复加密迁移后分类/交易重复；关闭生物识别增加密码二次验证 |
 | v 0.3.5 | 修复 WebDAV 同步空数据库问题；优化同步冲突处理逻辑 |
 | v 0.3.0 | **重大更新**：数据库按年分库（bookkeeper_YYYY.db）+ 元数据库（bookkeeper_meta.db），解决单库膨胀问题；WebDAV 改为多文件同步+MD5校验；导入/导出改为 .zip 格式打包；迁移时自动拆分旧库 |

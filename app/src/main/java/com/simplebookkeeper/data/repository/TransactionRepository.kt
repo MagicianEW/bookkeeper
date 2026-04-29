@@ -93,11 +93,18 @@ class TransactionRepository(
         categoryId: Long? = null,
         keyword: String? = null
     ): Flow<List<Transaction>> {
-        // 搜索范围：当前年份（性能优先）
-        return dbManager.getCurrentYearDao().search(
-            startDate, endDate, minAmount, maxAmount,
-            type?.name, categoryId, keyword
-        )
+        val years = dbManager.getAllYears()
+        if (years.isEmpty()) return flowOf(emptyList())
+
+        val flows = years.map { year ->
+            dbManager.getYearDao(year).search(
+                startDate, endDate, minAmount, maxAmount,
+                type?.name, categoryId, keyword
+            )
+        }
+        return combine(flows) { arrays ->
+            arrays.flatMap { it }.sortedByDescending { it.date.time }
+        }
     }
 
     // ─── 导出（全量数据） ──────────────────────────────────────

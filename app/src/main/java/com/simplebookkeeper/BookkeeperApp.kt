@@ -37,7 +37,7 @@ class BookkeeperApp : Application(), Configuration.Provider {
         AppLogger.init(this)
 
         // 初始化数据库（迁移检查 + 确保当年份 DB 存在）
-        CoroutineScope(Dispatchers.IO).launch {
+        kotlinx.coroutines.runBlocking(Dispatchers.IO) {
             dbManager.initialize()
         }
 

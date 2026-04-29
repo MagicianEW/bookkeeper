@@ -1125,7 +1125,7 @@ fun AboutDialog(onDismiss: () -> Unit) {
                     color = MaterialTheme.colorScheme.primaryContainer
                 ) {
                     Text(
-                        "v 0.3.6",
+                        "v 0.3.7",
                         style = MaterialTheme.typography.labelLarge,
                         color = MaterialTheme.colorScheme.onPrimaryContainer,
                         modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)

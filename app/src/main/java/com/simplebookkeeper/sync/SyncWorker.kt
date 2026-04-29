@@ -1,6 +1,7 @@
 package com.simplebookkeeper.sync
 
 import android.content.Context
+import com.simplebookkeeper.BookkeeperApp
 import com.simplebookkeeper.data.DatabaseManager
 import com.simplebookkeeper.data.repository.SettingsRepository
 import com.simplebookkeeper.util.AppLogger
@@ -18,8 +19,9 @@ class SyncWorker(
 
         if (!config.enabled || config.url.isBlank()) return Result.success()
 
-        val dbManager = DatabaseManager(applicationContext)
-        val webDavManager = WebDavManager(applicationContext)
+        val app = applicationContext as? BookkeeperApp ?: return Result.retry()
+        val dbManager = app.dbManager
+        val webDavManager = app.webDavManager
 
         AppLogger.i(TAG, "doWork: 多文件同步")
 

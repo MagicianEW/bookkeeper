@@ -228,8 +228,7 @@ class DatabaseManager(private val context: Context) {
             AppLogger.i(TAG, "旧单库迁移完成")
         } catch (e: Exception) {
             AppLogger.e(TAG, "旧单库迁移失败", e)
-            context.getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
-                .edit().putBoolean(MIGRATION_FLAG, true).apply()
+            // 不标记完成，下次启动可重试
         }
     }
 
