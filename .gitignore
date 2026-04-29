@@ -15,9 +15,10 @@ captures/
 *.ap_
 *.dex
 
-# Signing configs (NEVER commit keystore)
+# Signing configs (NEVER commit release keystore)
 *.jks
 *.keystore
+!debug.keystore
 keystore.properties
 
 # Generated files
