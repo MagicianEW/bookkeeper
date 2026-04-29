@@ -83,6 +83,7 @@ object DataExporter {
             var entry = zipIn.nextEntry
             var importedCount = 0
             var hasEncryptedFiles = false
+            val importedYearFiles = mutableListOf<Pair<Int, File>>()
 
             while (entry != null) {
                 when (entry.name) {
@@ -107,6 +108,8 @@ object DataExporter {
                                 if (!isPlainSqlite(dest)) {
                                     hasEncryptedFiles = true
                                     AppLogger.w(TAG, "$year 年库为加密 SQLite，来自其他设备备份，跳过迁移重置")
+                                } else {
+                                    importedYearFiles.add(year to dest)
                                 }
                                 AppLogger.i(TAG, "导入年库: $year")
                                 importedCount++
@@ -119,6 +122,39 @@ object DataExporter {
             }
 
             zipIn.close()
+
+            // 如果检测到加密文件，验证当前设备的密钥能否打开
+            // 密钥不匹配时（来自其他设备的备份），导入的数据库无法使用，必须拒绝
+            if (hasEncryptedFiles) {
+                val metaFile = DatabaseManager.getMetaDbFile(context)
+                val testFile = if (metaFile.exists()) metaFile
+                    else importedYearFiles.firstOrNull()?.second
+                if (testFile != null && !canOpenWithCurrentCipherKey(context, testFile)) {
+                    AppLogger.e(TAG, "加密备份的密钥与当前设备不匹配，无法导入，清理已导入文件")
+                    // 清理已导入的文件
+                    metaFile.delete()
+                    File("${metaFile.absolutePath}-wal").delete()
+                    File("${metaFile.absolutePath}-shm").delete()
+                    for ((_, f) in importedYearFiles) {
+                        f.delete()
+                        File("${f.absolutePath}-wal").delete()
+                        File("${f.absolutePath}-shm").delete()
+                    }
+                    DatabaseManager.closeAll()
+                    MetaDatabase.clearInstance()
+                    return@withContext false
+                }
+                AppLogger.i(TAG, "加密备份密钥验证通过，来自同一设备")
+            }
+
+            // 对导入的未加密年库执行 v1→v2 schema 迁移（amount: Double→Long）
+            for ((year, yearFile) in importedYearFiles) {
+                try {
+                    migrateYearDbIfNeeded(yearFile)
+                } catch (e: Exception) {
+                    AppLogger.w(TAG, "$year 年库迁移检查失败", e)
+                }
+            }
 
             // 清除所有 DB 缓存
             DatabaseManager.closeAll()
@@ -199,6 +235,38 @@ object DataExporter {
         val header = ByteArray(16)
         FileInputStream(file).use { it.read(header) }
         return "SQLite format 3\u0000".toByteArray().contentEquals(header)
+    }
+
+    /**
+     * 检测加密的 SQLite 文件能否用当前设备的 SQLCipher 密钥打开
+     * 用于导入时验证加密备份是否来自同一设备（密钥匹配）
+     * 使用 Room + SupportFactory 方式，与实际数据库打开方式一致
+     */
+    fun canOpenWithCurrentCipherKey(context: Context, dbFile: File): Boolean {
+        if (!dbFile.exists()) return false
+        try {
+            val app = context.applicationContext as? com.simplebookkeeper.BookkeeperApp
+                ?: return false
+            // 使用 Room + SupportFactory 测试打开，与实际 app 打开方式一致
+            val testDb = androidx.room.Room.databaseBuilder(
+                context.applicationContext,
+                androidx.room.RoomDatabase::class.java,
+                dbFile.absolutePath
+            )
+                .openHelperFactory(app.dbManager.cipherFactory)
+                .addCallback(object : androidx.room.RoomDatabase.Callback() {
+                    override fun onCreate(db: androidx.sqlite.db.SupportSQLiteDatabase) {}
+                    override fun onOpen(db: androidx.sqlite.db.SupportSQLiteDatabase) {}
+                })
+                .fallbackToDestructiveMigration()
+                .build()
+            testDb.openHelper.writableDatabase
+            testDb.close()
+            return true
+        } catch (e: Exception) {
+            AppLogger.w(TAG, "加密文件无法用当前密钥打开: ${dbFile.name}", e)
+            return false
+        }
     }
 
     /**

@@ -60,6 +60,8 @@ class DatabaseManager(private val context: Context) {
     // 加密管理器（Android Keystore + EncryptedSharedPreferences）
     private val encryption = DatabaseEncryption(context)
     private val supportFactory by lazy { encryption.getSupportFactory() }
+    /** SQLCipher SupportFactory，供外部验证加密数据库可访问性 */
+    val cipherFactory get() = supportFactory
 
     private val _metaDb: MetaDatabase by lazy {
         MetaDatabase.getInstance(context, supportFactory)
@@ -86,6 +88,8 @@ class DatabaseManager(private val context: Context) {
             _migrationState.value = MigrationState.Done
             // 3. 扫描并打开所有已存在的年份数据库
             scanAndOpenAllYears()
+            // 4. 验证所有数据库可正常访问（防止加密密钥不匹配导致闪退）
+            verifyDatabases()
         }
     }
 
@@ -96,6 +100,61 @@ class DatabaseManager(private val context: Context) {
             existingYears.forEach { getOrCreateYearDb(it) }
         } else {
             getOrCreateYearDb(currentYear())
+        }
+    }
+
+    /**
+     * 验证所有数据库可正常打开和查询
+     * 如果某个数据库无法访问（如加密密钥不匹配），删除并重建
+     * 防止导入其他设备的加密备份后 app 闪退
+     */
+    private fun verifyDatabases() {
+        // 验证元数据库
+        try {
+            _metaDb.openHelper.writableDatabase
+        } catch (e: Exception) {
+            AppLogger.e(TAG, "元数据库验证失败（可能密钥不匹配），将删除重建", e)
+            try {
+                MetaDatabase.clearInstance()
+                val metaFile = context.getDatabasePath(MetaDatabase.DB_NAME)
+                listOf("", "-shm", "-wal").forEach {
+                    File(metaFile.parentFile, "${MetaDatabase.DB_NAME}$it").delete()
+                }
+                // 重新创建（会触发 Room onCreate，插入默认分类）
+                val freshMeta = MetaDatabase.getInstance(context, supportFactory)
+                // 强制打开验证
+                freshMeta.openHelper.writableDatabase
+                AppLogger.i(TAG, "元数据库重建成功")
+            } catch (e2: Exception) {
+                AppLogger.e(TAG, "元数据库重建也失败", e2)
+            }
+        }
+
+        // 验证年份数据库
+        val yearsToRemove = mutableListOf<Int>()
+        for ((year, db) in yearDbs) {
+            try {
+                db.openHelper.writableDatabase
+            } catch (e: Exception) {
+                AppLogger.e(TAG, "$year 年数据库验证失败（可能密钥不匹配），将删除", e)
+                try {
+                    db.close()
+                    val yearFile = getYearDbFile(year)
+                    listOf("", "-shm", "-wal").forEach {
+                        File(yearFile.parentFile, "${YearDatabase.dbName(year)}$it").delete()
+                    }
+                    yearsToRemove.add(year)
+                } catch (e2: Exception) {
+                    AppLogger.e(TAG, "删除 $year 年数据库失败", e2)
+                }
+            }
+        }
+        // 从缓存中移除已删除的年份数据库
+        yearsToRemove.forEach { yearDbs.remove(it) }
+        // 如果有年库被删除，确保当年份数据库存在
+        if (yearsToRemove.isNotEmpty()) {
+            getOrCreateYearDb(currentYear())
+            AppLogger.i(TAG, "已清理 ${yearsToRemove.size} 个损坏的年份数据库")
         }
     }
 
