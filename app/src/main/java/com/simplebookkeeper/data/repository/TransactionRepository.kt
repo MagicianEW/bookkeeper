@@ -5,6 +5,7 @@ import com.simplebookkeeper.data.dao.TransactionDao
 import com.simplebookkeeper.data.model.Category
 import com.simplebookkeeper.data.model.Transaction
 import com.simplebookkeeper.data.model.TransactionType
+import com.simplebookkeeper.util.AppLogger
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flowOf
@@ -118,8 +119,10 @@ class TransactionRepository(
 
     // ─── 分类操作 ─────────────────────────────────────────────
 
-    fun getAllCategories(): Flow<List<Category>> =
-        dbManager.categoryDao.getAll()
+    fun getAllCategories(): Flow<List<Category>> {
+        AppLogger.i("TransactionRepository", "getAllCategories called, categoryDao=${dbManager.categoryDao}")
+        return dbManager.categoryDao.getAll()
+    }
 
     fun getCategoriesByType(type: TransactionType): Flow<List<Category>> =
         dbManager.categoryDao.getByType(type)
