@@ -11,6 +11,7 @@ import com.simplebookkeeper.data.repository.TransactionRepository
 import com.simplebookkeeper.data.repository.WebDavConfig
 import com.simplebookkeeper.sync.SyncResult
 import com.simplebookkeeper.sync.SyncWorker
+import com.simplebookkeeper.util.AppLogger
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import java.util.Calendar
@@ -138,10 +139,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     ) {
         viewModelScope.launch {
             _searchState.value = _searchState.value.copy(isSearching = true)
-            repo.search(startDate, endDate, minAmount, maxAmount, type, categoryId, keyword)
-                .collect { results ->
-                    _searchState.value = SearchUiState(results = results, isSearching = false)
-                }
+            try {
+                repo.search(startDate, endDate, minAmount, maxAmount, type, categoryId, keyword)
+                    .collect { results ->
+                        _searchState.value = SearchUiState(results = results, isSearching = false)
+                    }
+            } catch (e: Exception) {
+                AppLogger.e("MainViewModel", "搜索失败", e)
+                _searchState.value = SearchUiState(results = emptyList(), isSearching = false)
+            }
         }
     }
 

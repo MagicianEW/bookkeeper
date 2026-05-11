@@ -48,8 +48,12 @@ abstract class MetaDatabase : RoomDatabase() {
                     .addCallback(object : Callback() {
                         override fun onCreate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
                             super.onCreate(db)
-                            CoroutineScope(Dispatchers.IO).launch {
-                                INSTANCE?.categoryDao()?.insertAll(defaultCategories())
+                            // 安全地获取 instance，避免在 builder.build() 返回前 INSTANCE 还未赋值的问题
+                            val dbInstance = INSTANCE
+                            if (dbInstance != null) {
+                                CoroutineScope(Dispatchers.IO).launch {
+                                    dbInstance.categoryDao().insertAll(defaultCategories())
+                                }
                             }
                         }
                     })

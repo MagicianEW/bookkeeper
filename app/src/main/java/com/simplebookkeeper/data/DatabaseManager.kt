@@ -105,56 +105,46 @@ class DatabaseManager(private val context: Context) {
 
     /**
      * 验证所有数据库可正常打开和查询
-     * 如果某个数据库无法访问（如加密密钥不匹配），删除并重建
-     * 防止导入其他设备的加密备份后 app 闪退
+     * 如果某个数据库无法访问（如加密密钥不匹配），标记为失效但不删除
+     * 下次访问时将重新创建，有效防止误删用户数据
      */
     private fun verifyDatabases() {
         // 验证元数据库
         try {
             _metaDb.openHelper.writableDatabase
         } catch (e: Exception) {
-            AppLogger.e(TAG, "元数据库验证失败（可能密钥不匹配），将删除重建", e)
+            AppLogger.e(TAG, "元数据库验证失败（可能密钥不匹配），标记为失效", e)
             try {
                 MetaDatabase.clearInstance()
-                val metaFile = context.getDatabasePath(MetaDatabase.DB_NAME)
-                listOf("", "-shm", "-wal").forEach {
-                    File(metaFile.parentFile, "${MetaDatabase.DB_NAME}$it").delete()
-                }
-                // 重新创建（会触发 Room onCreate，插入默认分类）
-                val freshMeta = MetaDatabase.getInstance(context, supportFactory)
-                // 强制打开验证
-                freshMeta.openHelper.writableDatabase
-                AppLogger.i(TAG, "元数据库重建成功")
+                // 不再删除文件，仅清除实例引用
+                // 下次访问 categoryDao 时会重新创建数据库（如果文件存在则打开，如果不存在则创建）
+                AppLogger.i(TAG, "元数据库实例已清除，将在下一次访问时重新初始化")
             } catch (e2: Exception) {
-                AppLogger.e(TAG, "元数据库重建也失败", e2)
+                AppLogger.e(TAG, "清除元数据库实例失败", e2)
             }
         }
 
         // 验证年份数据库
-        val yearsToRemove = mutableListOf<Int>()
         for ((year, db) in yearDbs) {
             try {
                 db.openHelper.writableDatabase
             } catch (e: Exception) {
-                AppLogger.e(TAG, "$year 年数据库验证失败（可能密钥不匹配），将删除", e)
+                AppLogger.e(TAG, "$year 年数据库验证失败（可能密钥不匹配），标记为失效", e)
+                // 不删除文件，仅从缓存中移除并关闭
+                // 下次访问该年份数据时会重新创建
                 try {
                     db.close()
-                    val yearFile = getYearDbFile(year)
-                    listOf("", "-shm", "-wal").forEach {
-                        File(yearFile.parentFile, "${YearDatabase.dbName(year)}$it").delete()
-                    }
-                    yearsToRemove.add(year)
+                    AppLogger.i(TAG, "$year 年数据库已关闭，将在下一次访问时重新初始化")
                 } catch (e2: Exception) {
-                    AppLogger.e(TAG, "删除 $year 年数据库失败", e2)
+                    AppLogger.e(TAG, "关闭 $year 年数据库失败", e2)
                 }
+                yearDbs.remove(year)
             }
         }
-        // 从缓存中移除已删除的年份数据库
-        yearsToRemove.forEach { yearDbs.remove(it) }
-        // 如果有年库被删除，确保当年份数据库存在
-        if (yearsToRemove.isNotEmpty()) {
+        // 如果有年库被失效，确保当前年份数据库存在
+        if (yearDbs.isEmpty()) {
             getOrCreateYearDb(currentYear())
-            AppLogger.i(TAG, "已清理 ${yearsToRemove.size} 个损坏的年份数据库")
+            AppLogger.i(TAG, "已重新初始化当前年份数据库")
         }
     }
 
