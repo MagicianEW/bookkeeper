@@ -35,29 +35,30 @@ abstract class MetaDatabase : RoomDatabase() {
         private var INSTANCE: MetaDatabase? = null
 
         fun getInstance(context: Context, factory: SupportSQLiteOpenHelper.Factory? = null): MetaDatabase {
-            return INSTANCE ?: synchronized(this) {
-                val builder = Room.databaseBuilder(
+            INSTANCE?.let { return it }
+
+            return synchronized(this) {
+                INSTANCE?.let { return it }
+
+                val instance = Room.databaseBuilder(
                     context.applicationContext,
                     MetaDatabase::class.java,
                     DB_NAME
                 )
-                if (factory != null) {
-                    builder.openHelperFactory(factory)
-                }
-                val instance = builder
+                    .apply { if (factory != null) openHelperFactory(factory) }
                     .addCallback(object : Callback() {
                         override fun onCreate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
-                            super.onCreate(db)
-                            // 安全地获取 instance，避免在 builder.build() 返回前 INSTANCE 还未赋值的问题
-                            val dbInstance = INSTANCE
-                            if (dbInstance != null) {
-                                CoroutineScope(Dispatchers.IO).launch {
-                                    dbInstance.categoryDao().insertAll(defaultCategories())
-                                }
+                            // onCreate 在数据库首次创建时调用，此时数据库为空，插入默认分类
+                            defaultCategories().forEach { cat ->
+                                db.execSQL(
+                                    "INSERT INTO categories(name, type, icon, isDefault, sortOrder) VALUES(?, ?, ?, ?, ?)",
+                                    arrayOf(cat.name, cat.type.name, cat.icon, if (cat.isDefault) 1 else 0, cat.sortOrder)
+                                )
                             }
                         }
                     })
                     .build()
+
                 INSTANCE = instance
                 instance
             }

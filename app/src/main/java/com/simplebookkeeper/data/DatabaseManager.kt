@@ -105,23 +105,17 @@ class DatabaseManager(private val context: Context) {
 
     /**
      * 验证所有数据库可正常打开和查询
-     * 如果某个数据库无法访问（如加密密钥不匹配），标记为失效但不删除
-     * 下次访问时将重新创建，有效防止误删用户数据
+     * 如果某个数据库无法访问（如加密密钥不匹配），捕获异常防止闪退
+     * 下次访问时 Room 会自动重新打开/创建数据库
      */
     private fun verifyDatabases() {
         // 验证元数据库
         try {
             _metaDb.openHelper.writableDatabase
         } catch (e: Exception) {
-            AppLogger.e(TAG, "元数据库验证失败（可能密钥不匹配），标记为失效", e)
-            try {
-                MetaDatabase.clearInstance()
-                // 不再删除文件，仅清除实例引用
-                // 下次访问 categoryDao 时会重新创建数据库（如果文件存在则打开，如果不存在则创建）
-                AppLogger.i(TAG, "元数据库实例已清除，将在下一次访问时重新初始化")
-            } catch (e2: Exception) {
-                AppLogger.e(TAG, "清除元数据库实例失败", e2)
-            }
+            AppLogger.e(TAG, "元数据库验证失败（可能密钥不匹配），下次访问将重新打开", e)
+            // 清除实例引用，下次访问时 Room 会自动重新打开
+            MetaDatabase.clearInstance()
         }
 
         // 验证年份数据库
@@ -129,19 +123,12 @@ class DatabaseManager(private val context: Context) {
             try {
                 db.openHelper.writableDatabase
             } catch (e: Exception) {
-                AppLogger.e(TAG, "$year 年数据库验证失败（可能密钥不匹配），标记为失效", e)
-                // 不删除文件，仅从缓存中移除并关闭
-                // 下次访问该年份数据时会重新创建
-                try {
-                    db.close()
-                    AppLogger.i(TAG, "$year 年数据库已关闭，将在下一次访问时重新初始化")
-                } catch (e2: Exception) {
-                    AppLogger.e(TAG, "关闭 $year 年数据库失败", e2)
-                }
+                AppLogger.e(TAG, "$year 年数据库验证失败（可能密钥不匹配），下次访问将重新打开", e)
+                // 从缓存中移除，下次访问时 Room 会自动重新打开
                 yearDbs.remove(year)
             }
         }
-        // 如果有年库被失效，确保当前年份数据库存在
+        // 如果有年库被移除，确保当前年份数据库存在
         if (yearDbs.isEmpty()) {
             getOrCreateYearDb(currentYear())
             AppLogger.i(TAG, "已重新初始化当前年份数据库")
