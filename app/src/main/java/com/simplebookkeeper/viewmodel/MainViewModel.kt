@@ -60,11 +60,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     val allCategories: StateFlow<List<Category>> =
         repo.getAllCategories()
-            .also { flow -> AppLogger.i("MainViewModel", "allCategories flow created") }
             .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
     val categoriesMap: StateFlow<Map<Long, Category>> = allCategories
-        .map { list -> list.associateBy { it.id }.also { AppLogger.i("MainViewModel", "categoriesMap built with ${it.size} categories") } }
+        .map { list -> list.associateBy { it.id } }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyMap())
 
     val availableYears: StateFlow<List<String>> =
