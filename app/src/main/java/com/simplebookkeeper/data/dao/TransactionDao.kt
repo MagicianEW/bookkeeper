@@ -92,22 +92,6 @@ interface TransactionDao {
     """)
     suspend fun getYearlyExpense(year: String): Long
 
-    // 某年储蓄总额（单位：分）
-    @Query("""
-        SELECT COALESCE(SUM(amount), 0) FROM transactions
-        WHERE type = 'SAVING'
-          AND strftime('%Y', date / 1000, 'unixepoch', 'localtime') = :year
-    """)
-    suspend fun getYearlySavingAmount(year: String): Long
-
-    // 某年支取总额（单位：分）
-    @Query("""
-        SELECT COALESCE(SUM(amount), 0) FROM transactions
-        WHERE type = 'WITHDRAW'
-          AND strftime('%Y', date / 1000, 'unixepoch', 'localtime') = :year
-    """)
-    suspend fun getYearlyWithdrawAmount(year: String): Long
-
     // 模糊查询（时间范围 + 金额(分) + 类型 + 分类 + 备注关键词）
     @Query("""
         SELECT * FROM transactions

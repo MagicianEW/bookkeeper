@@ -4,6 +4,7 @@ import android.os.Bundle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AppCompatActivity
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -14,22 +15,64 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.simplebookkeeper.BookkeeperApp
+import com.simplebookkeeper.ui.screens.FirstLaunchSetPasswordDialog
 import com.simplebookkeeper.ui.screens.FirstLaunchSyncDialog
 import com.simplebookkeeper.ui.screens.LockScreen
 import com.simplebookkeeper.ui.screens.SplashScreen
+import com.simplebookkeeper.ui.theme.LanguageMode
 import com.simplebookkeeper.ui.theme.SimpleBookkeeperTheme
+import com.simplebookkeeper.ui.theme.ThemeMode
+import com.simplebookkeeper.util.LocaleHelper
 import com.simplebookkeeper.viewmodel.MainViewModel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 
 class MainActivity : AppCompatActivity() {
 
+    companion object {
+        @JvmStatic
+        var lastAppliedLanguage: LanguageMode? = null
+    }
+
     @OptIn(ExperimentalMaterial3WindowSizeClassApi::class)
     override fun onCreate(savedInstanceState: Bundle?) {
+        val app = application as BookkeeperApp
+
+        // 从 DataStore 同步读取语言设置（冷启动时 only，热启动用静态变量）
+        if (lastAppliedLanguage == null) {
+            runBlocking {
+                lastAppliedLanguage = app.settingsRepository.languageMode.first()
+            }
+        }
+
+        // 应用语言设置
+        applyLanguage(lastAppliedLanguage!!)
+
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
+        // 清理上次残留的生物识别请求，防止 BiometricScheduler 队列堆积
+        app.biometricAuth.cancel()
+
         setContent {
-            SimpleBookkeeperTheme {
+            val app = application as BookkeeperApp
+            val themeMode by app.settingsRepository.themeMode.collectAsState(initial = ThemeMode.SYSTEM)
+            // languageMode 不再用于驱动 recreate，仅用于 UI 状态显示
+            val languageMode by app.settingsRepository.languageMode.collectAsState(initial = LanguageMode.FOLLOW_SYSTEM)
+
+            // 同步静态变量（语言切换由 SettingsScreen 显式重启应用来生效）
+            LaunchedEffect(languageMode) {
+                lastAppliedLanguage = languageMode
+            }
+            val darkTheme = when (themeMode) {
+                ThemeMode.LIGHT -> false
+                ThemeMode.DARK -> true
+                ThemeMode.SYSTEM -> isSystemInDarkTheme()
+            }
+
+            SimpleBookkeeperTheme(darkTheme = darkTheme) {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
@@ -45,22 +88,25 @@ class MainActivity : AppCompatActivity() {
                     if (showSplash) {
                         SplashScreen()
                     } else {
-                        val app = application as BookkeeperApp
                         val windowSizeClass = calculateWindowSizeClass(this)
                         val isTablet = windowSizeClass.widthSizeClass >= WindowWidthSizeClass.Medium
 
                         val isPasswordEnabled by app.passwordManager.isPasswordEnabled.collectAsState(initial = false)
-                        val isFirstLaunch by app.passwordManager.isFirstLaunch.collectAsState(initial = true)
+                        val isFirstLaunch by app.settingsRepository.isFirstLaunch.collectAsState(initial = true)
+                        val isPasswordSetupDone by app.settingsRepository.isPasswordSetupDone.collectAsState(initial = false)
                         val isSyncPromptShown by app.settingsRepository.isCloudSyncPromptShown.collectAsState(initial = true)
 
                         var isUnlocked by remember { mutableStateOf(false) }
-                        var showFirstLaunchDialog by remember { mutableStateOf(false) }
+                        var showSetPasswordDialog by remember { mutableStateOf(false) }
+                        var showSyncDialog by remember { mutableStateOf(false) }
+                        val scope = rememberCoroutineScope()
 
-                        // 首次启动弹出云端同步对话框
-                        LaunchedEffect(isFirstLaunch, isSyncPromptShown) {
-                            if (isFirstLaunch && !isSyncPromptShown) {
-                                showFirstLaunchDialog = true
-                                app.passwordManager.markNotFirstLaunch()
+                        // 首次启动流程：1. 密码设置  2. 云端恢复
+                        LaunchedEffect(isFirstLaunch, isPasswordSetupDone, isSyncPromptShown) {
+                            if (isFirstLaunch && !isPasswordSetupDone) {
+                                showSetPasswordDialog = true
+                            } else if (isFirstLaunch && isPasswordSetupDone && !isSyncPromptShown) {
+                                showSyncDialog = true
                             }
                         }
 
@@ -69,9 +115,40 @@ class MainActivity : AppCompatActivity() {
                             isPasswordEnabled && !isUnlocked -> {
                                 LockScreen(onUnlocked = { isUnlocked = true })
                             }
-                            // 首次启动云端对话框（密码验证后或无密码）
-                            showFirstLaunchDialog -> {
-                                FirstLaunchSyncDialog(onDismiss = { showFirstLaunchDialog = false })
+                            // 首次启动：密码设置对话框
+                            showSetPasswordDialog && !isPasswordSetupDone -> {
+                                FirstLaunchSetPasswordDialog(
+                                    onPasswordSet = { password ->
+                                        scope.launch {
+                                            app.passwordManager.setPassword(password)
+                                            app.settingsRepository.markPasswordSetupDone()
+                                        }
+                                        showSetPasswordDialog = false
+                                        // 密码设置后，弹出云端恢复对话框
+                                        if (!isSyncPromptShown) {
+                                            showSyncDialog = true
+                                        }
+                                    },
+                                    onSkip = {
+                                        scope.launch {
+                                            app.settingsRepository.markPasswordSetupDone()
+                                        }
+                                        showSetPasswordDialog = false
+                                        // 跳过密码后，也弹出云端恢复对话框
+                                        if (!isSyncPromptShown) {
+                                            showSyncDialog = true
+                                        }
+                                    }
+                                )
+                            }
+                            // 首次启动：云端恢复对话框
+                            showSyncDialog && !isSyncPromptShown -> {
+                                FirstLaunchSyncDialog(onDismiss = {
+                                    showSyncDialog = false
+                                    scope.launch {
+                                        app.settingsRepository.markNotFirstLaunch()
+                                    }
+                                })
                             }
                             // 正常主界面
                             else -> {
@@ -87,5 +164,13 @@ class MainActivity : AppCompatActivity() {
                 }
             }
         }
+    }
+
+    private fun applyLanguage(mode: LanguageMode) {
+        val locale = LocaleHelper.getLocaleFromMode(mode)
+        val config = resources.configuration
+        config.setLocale(locale)
+        @Suppress("DEPRECATION")
+        resources.updateConfiguration(config, resources.displayMetrics)
     }
 }

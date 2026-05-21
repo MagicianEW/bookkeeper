@@ -10,14 +10,15 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.simplebookkeeper.R
 import com.simplebookkeeper.data.model.TransactionType
 import com.simplebookkeeper.ui.components.TransactionItem
 import com.simplebookkeeper.ui.theme.ExpenseRed
 import com.simplebookkeeper.ui.theme.IncomeGreen
-import com.simplebookkeeper.ui.theme.SavingBlue
 import com.simplebookkeeper.viewmodel.MainViewModel
 import kotlinx.coroutines.launch
 import java.util.Calendar
@@ -33,7 +34,6 @@ fun StatisticsScreen(
     var selectedYear by remember { mutableIntStateOf(currentYear) }
     var yearlyIncome by remember { mutableLongStateOf(0L) }
     var yearlyExpense by remember { mutableLongStateOf(0L) }
-    var yearlySavings by remember { mutableLongStateOf(0L) }
     val availableYears by viewModel.availableYears.collectAsState()
     val categoriesMap by viewModel.categoriesMap.collectAsState()
 
@@ -43,7 +43,6 @@ fun StatisticsScreen(
             val (income, expense) = viewModel.getYearlySummary(selectedYear)
             yearlyIncome = income
             yearlyExpense = expense
-            yearlySavings = viewModel.getYearlySavings(selectedYear)
         }
     }
 
@@ -56,7 +55,7 @@ fun StatisticsScreen(
             modifier = Modifier.fillMaxWidth()
         ) {
             Text(
-                "统计",
+                stringResource(R.string.statistics_title),
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onPrimary,
@@ -76,7 +75,7 @@ fun StatisticsScreen(
                 Icon(Icons.Default.KeyboardArrowLeft, contentDescription = "上一年")
             }
             Text(
-                "${selectedYear}年",
+                stringResource(R.string.year_format, selectedYear),
                 fontWeight = FontWeight.Bold,
                 fontSize = 20.sp,
                 modifier = Modifier.padding(horizontal = 24.dp)
@@ -91,31 +90,23 @@ fun StatisticsScreen(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp, vertical = 8.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primary)
         ) {
             Column(
                 modifier = Modifier.padding(20.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                Text("${selectedYear}年汇总", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                Text(stringResource(R.string.year_summary, selectedYear), fontWeight = FontWeight.Bold, fontSize = 16.sp,
+                    color = MaterialTheme.colorScheme.onPrimary)
                 Spacer(modifier = Modifier.height(16.dp))
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceEvenly
                 ) {
-                    YearStatItem("年收入", yearlyIncome, IncomeGreen)
-                    YearStatItem("年支出", yearlyExpense, ExpenseRed)
-                    YearStatItem("年结余", yearlyIncome - yearlyExpense,
+                    YearStatItem(stringResource(R.string.yearly_income), yearlyIncome, IncomeGreen)
+                    YearStatItem(stringResource(R.string.yearly_expense), yearlyExpense, ExpenseRed)
+                    YearStatItem(stringResource(R.string.yearly_balance), yearlyIncome - yearlyExpense,
                         if (yearlyIncome >= yearlyExpense) IncomeGreen else ExpenseRed)
-                }
-                Spacer(modifier = Modifier.height(12.dp))
-                HorizontalDivider()
-                Spacer(modifier = Modifier.height(12.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.Center
-                ) {
-                    YearStatItem("年储蓄", yearlySavings, SavingBlue)
                 }
             }
         }
@@ -123,7 +114,7 @@ fun StatisticsScreen(
         HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
 
         Text(
-            "明细列表",
+            stringResource(R.string.detail_list),
             style = MaterialTheme.typography.labelMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)

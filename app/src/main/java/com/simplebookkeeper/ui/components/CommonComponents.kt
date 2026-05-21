@@ -9,9 +9,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.simplebookkeeper.R
 import com.simplebookkeeper.data.model.Transaction
 import com.simplebookkeeper.data.model.Category
 import com.simplebookkeeper.data.model.TransactionType
@@ -122,17 +124,17 @@ fun SummaryCard(
                 .padding(20.dp),
             horizontalArrangement = Arrangement.SpaceEvenly
         ) {
-            SummaryItem("收入", income, IncomeGreen)
+            SummaryItem(stringResource(R.string.income), income, IncomeGreen)
             VerticalDivider(
                 modifier = Modifier.height(50.dp),
                 color = Color.White.copy(alpha = 0.3f)
             )
-            SummaryItem("支出", expense, ExpenseRed)
+            SummaryItem(stringResource(R.string.expense), expense, ExpenseRed)
             VerticalDivider(
                 modifier = Modifier.height(50.dp),
                 color = Color.White.copy(alpha = 0.3f)
             )
-            SummaryItem("结余", income - expense, Color.White)
+            SummaryItem(stringResource(R.string.balance), income - expense, Color.White)
         }
     }
 }

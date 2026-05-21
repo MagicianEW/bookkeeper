@@ -15,6 +15,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 
 import androidx.compose.ui.text.input.KeyboardType
@@ -22,20 +23,21 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.simplebookkeeper.BookkeeperApp
-import com.simplebookkeeper.data.AppDatabase
+import com.simplebookkeeper.BuildConfig
+import com.simplebookkeeper.R
 import com.simplebookkeeper.data.DataExporter
-import com.simplebookkeeper.data.DatabaseManager
 import com.simplebookkeeper.data.model.Category
 import com.simplebookkeeper.data.model.TransactionType
 import com.simplebookkeeper.data.repository.WebDavConfig
-import com.simplebookkeeper.sync.BackupVersion
-import com.simplebookkeeper.sync.ConflictFile
 import com.simplebookkeeper.sync.SyncResult
 import com.simplebookkeeper.sync.SyncWorker
+import com.simplebookkeeper.ui.theme.LanguageMode
+import com.simplebookkeeper.ui.theme.ThemeMode
 import com.simplebookkeeper.util.AppLogger
 import com.simplebookkeeper.viewmodel.MainViewModel
 import androidx.fragment.app.FragmentActivity
@@ -55,10 +57,32 @@ fun SettingsScreen(
     val app = context.applicationContext as BookkeeperApp
     val scope = rememberCoroutineScope()
 
+    // 预提取 onClick 等非 Composable 作用域中需要的字符串
+    val exportSuccessText = stringResource(R.string.export_success)
+    val exportFailedText = stringResource(R.string.export_failed)
+    val logExportSuccessText = stringResource(R.string.log_export_success)
+    val importSuccessText = stringResource(R.string.import_success)
+    val importFailedText = stringResource(R.string.import_failed)
+    val pleaseConfigureWebdavText = stringResource(R.string.please_configure_webdav)
+    val connectionFailedMsgTemplate = stringResource(R.string.connection_failed_message)
+    val connectionSuccessText = stringResource(R.string.connection_success)
+    val configSavedText = stringResource(R.string.config_saved)
+    val syncSuccessText = stringResource(R.string.export_success)
+    val syncFailedTemplate = stringResource(R.string.connection_failed_message)
+    val syncCompleteText = stringResource(R.string.sync_complete)
+    val passwordSetSuccessText = stringResource(R.string.password_set_success)
+    val passwordErrorText = stringResource(R.string.password_error)
+
     // 密码相关
     val isPasswordEnabled by app.passwordManager.isPasswordEnabled.collectAsState(initial = false)
     val isBiometricEnabled by app.passwordManager.isBiometricEnabled.collectAsState(initial = false)
     val canUseBiometric = app.biometricAuth.canAuthenticate()
+
+    // 主题模式
+    val themeMode by app.settingsRepository.themeMode.collectAsState(initial = ThemeMode.SYSTEM)
+
+    // 语言模式
+    val languageMode by app.settingsRepository.languageMode.collectAsState(initial = LanguageMode.FOLLOW_SYSTEM)
 
     // WebDAV配置
     val webDavConfig by app.settingsRepository.webDavConfig.collectAsState(initial = WebDavConfig())
@@ -70,7 +94,7 @@ fun SettingsScreen(
     // 对话框状态
     var showSetPasswordDialog by remember { mutableStateOf(false) }
     var showDisablePasswordDialog by remember { mutableStateOf(false) }
-    var showPasswordVerifyForDisable by remember { mutableStateOf(false) }  // 关闭生物识别时密码验证
+    var showPasswordVerifyForDisable by remember { mutableStateOf(false) }
     var showWebDavSection by remember { mutableStateOf(false) }
     var showAddCategoryDialog by remember { mutableStateOf(false) }
     var showAboutDialog by remember { mutableStateOf(false) }
@@ -79,34 +103,26 @@ fun SettingsScreen(
     var isTesting by remember { mutableStateOf(false) }
     var isSyncing by remember { mutableStateOf(false) }
 
-    // 冲突解决对话框状态
-    var showConflictDialog by remember { mutableStateOf(false) }
-    var conflictData by remember { mutableStateOf<Pair<Long, Long>?>(null) }
-    var conflictConfig by remember { mutableStateOf<WebDavConfig?>(null) }
-    var multiConflictFiles by remember { mutableStateOf<List<ConflictFile>>(emptyList()) }
-
-    // 备份版本选择对话框状态
-    var showBackupDialog by remember { mutableStateOf(false) }
-    var backupVersions by remember { mutableStateOf<List<BackupVersion>>(emptyList()) }
-    var backupConfig by remember { mutableStateOf<WebDavConfig?>(null) }
-
     val allCategories by viewModel.allCategories.collectAsState()
 
-    // 导出文件选择器（导出为 zip）
+    // 导出文件选择器（导出为 CSV 压缩包）
     val exportLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CreateDocument("application/zip")
     ) { uri ->
         uri?.let {
             scope.launch {
                 val tempFile = File(context.cacheDir, "bookkeeper_export.zip")
-                val success = DataExporter.exportToZip(context, tempFile)
+                // 如果设置了密码，需要让用户输入密码用于加密
+                // 此处暂用 null（导出时不加密），后续可通过对话框输入密码
+                val password: String? = null
+                val success = DataExporter.exportToZip(context, tempFile, password)
                 if (success) {
                     context.contentResolver.openOutputStream(uri)?.use { out ->
                         tempFile.inputStream().use { it.copyTo(out) }
                     }
-                    syncMessage = "✅ 导出成功"
+                    syncMessage = exportSuccessText
                 } else {
-                    syncMessage = "❌ 导出失败"
+                    syncMessage = exportFailedText
                 }
                 tempFile.delete()
             }
@@ -120,19 +136,19 @@ fun SettingsScreen(
         uri?.let {
             scope.launch {
                 exportLogsToUri(context, it)
-                syncMessage = "日志导出成功"
+                syncMessage = logExportSuccessText
             }
         }
     }
 
-    // 导入文件选择器（支持 zip 和 db）
+    // 导入文件选择器（支持 zip）
     val importLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri ->
         uri?.let {
             scope.launch {
                 val success = importData(context, it)
-                syncMessage = if (success) "✅ 导入成功，请重启应用以完成数据迁移" else "❌ 导入失败，文件格式不正确"
+                syncMessage = if (success) importSuccessText else importFailedText
             }
         }
     }
@@ -149,7 +165,7 @@ fun SettingsScreen(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    "设置",
+                    stringResource(R.string.settings_title),
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onPrimary,
@@ -158,7 +174,7 @@ fun SettingsScreen(
                 IconButton(onClick = { showAboutDialog = true }) {
                     Icon(
                         Icons.Default.Info,
-                        contentDescription = "关于",
+                        contentDescription = stringResource(R.string.about),
                         tint = MaterialTheme.colorScheme.onPrimary
                     )
                 }
@@ -169,15 +185,50 @@ fun SettingsScreen(
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(bottom = 80.dp)
         ) {
+            // ——— 外观 ———
+            item { SettingsSectionHeader(stringResource(R.string.appearance)) }
+            item {
+                ThemeModeSelector(
+                    currentMode = themeMode,
+                    onModeChange = { mode ->
+                        scope.launch { app.settingsRepository.saveThemeMode(mode) }
+                    }
+                )
+            }
+
+            // ——— 语言 ———
+            item { SettingsSectionHeader(stringResource(R.string.language)) }
+            item {
+                LanguageModeSelector(
+                    currentMode = languageMode,
+                    onModeChange = { mode ->
+                        scope.launch {
+                            // 先保存语言设置，等待写入完成
+                            app.settingsRepository.saveLanguageMode(mode)
+                            // 更新静态变量，确保新 Activity 读到正确值
+                            com.simplebookkeeper.ui.MainActivity.lastAppliedLanguage = mode
+                            // 重启 Activity
+                            val activity = context as? androidx.appcompat.app.AppCompatActivity
+                            if (activity != null) {
+                                val intent = activity.intent
+                                intent.addFlags(android.content.Intent.FLAG_ACTIVITY_CLEAR_TOP or android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                                activity.finish()
+                                activity.startActivity(intent)
+                            }
+                        }
+                    }
+                )
+            }
+
             // ——— 安全设置 ———
             item {
-                SettingsSectionHeader("安全")
+                SettingsSectionHeader(stringResource(R.string.security))
             }
             item {
                 SettingsItem(
                     icon = Icons.Default.Lock,
-                    title = if (isPasswordEnabled) "修改密码" else "设置密码",
-                    subtitle = if (isPasswordEnabled) "已设置密码保护" else "设置后下次启动需要验证",
+                    title = if (isPasswordEnabled) stringResource(R.string.change_password) else stringResource(R.string.set_password),
+                    subtitle = if (isPasswordEnabled) stringResource(R.string.password_set) else stringResource(R.string.password_not_set),
                     onClick = { showSetPasswordDialog = true }
                 )
             }
@@ -185,8 +236,8 @@ fun SettingsScreen(
                 item {
                     SettingsItem(
                         icon = Icons.Default.LockOpen,
-                        title = "关闭密码",
-                        subtitle = "关闭后启动无需验证",
+                        title = stringResource(R.string.close_password),
+                        subtitle = stringResource(R.string.cannot_sync_encrypted),
                         onClick = { showDisablePasswordDialog = true }
                     )
                 }
@@ -194,12 +245,11 @@ fun SettingsScreen(
                     item {
                         SettingsSwitchItem(
                             icon = Icons.Default.Fingerprint,
-                            title = "生物识别",
-                            subtitle = "使用指纹或面容解锁",
+                            title = stringResource(R.string.biometric),
+                            subtitle = stringResource(R.string.biometric_disabled),
                             checked = isBiometricEnabled,
                             onCheckedChange = { enabled ->
                                 if (enabled) {
-                                    // 开启时先验证生物识别
                                     val activity = context as? FragmentActivity
                                     if (activity != null) {
                                         app.biometricAuth.authenticate(
@@ -212,7 +262,6 @@ fun SettingsScreen(
                                         )
                                     }
                                 } else {
-                                    // 关闭时也要验证：优先生物识别，失败则密码验证
                                     val activity = context as? FragmentActivity
                                     if (activity != null) {
                                         app.biometricAuth.authenticate(
@@ -220,7 +269,7 @@ fun SettingsScreen(
                                             onSuccess = {
                                                 scope.launch { app.passwordManager.setBiometricEnabled(false) }
                                             },
-                                            onFailed = { /* 生物识别失败，尝试密码 */
+                                            onFailed = {
                                                 showPasswordVerifyForDisable = true
                                             },
                                             onError = { }
@@ -234,12 +283,12 @@ fun SettingsScreen(
             }
 
             // ——— 云端同步 ———
-            item { SettingsSectionHeader("云端同步") }
+            item { SettingsSectionHeader(stringResource(R.string.webdav_sync)) }
             item {
                 SettingsSwitchItem(
                     icon = Icons.Default.Cloud,
-                    title = "WebDAV 同步",
-                    subtitle = if (webDavEnabled && webDavUrl.isNotBlank()) "已配置: ${webDavUrl.take(30)}" else "未配置",
+                    title = stringResource(R.string.webdav_sync),
+                    subtitle = if (webDavEnabled && webDavUrl.isNotBlank()) stringResource(R.string.configured_prefix, webDavUrl.take(30)) else stringResource(R.string.not_configured),
                     checked = webDavEnabled,
                     onCheckedChange = { enabled ->
                         webDavEnabled = enabled
@@ -259,8 +308,8 @@ fun SettingsScreen(
             item {
                 SettingsItem(
                     icon = Icons.Default.Settings,
-                    title = "配置 WebDAV 服务器",
-                    subtitle = "设置服务器地址和账号",
+                    title = stringResource(R.string.configure_webdav),
+                    subtitle = stringResource(R.string.configure_webdav_subtitle),
                     onClick = { showWebDavSection = !showWebDavSection }
                 )
             }
@@ -275,8 +324,8 @@ fun SettingsScreen(
                             OutlinedTextField(
                                 value = webDavUrl,
                                 onValueChange = { webDavUrl = it },
-                                label = { Text("WebDAV 地址") },
-                                placeholder = { Text("https://your-server/dav") },
+                                label = { Text(stringResource(R.string.webdav_address)) },
+                                placeholder = { Text(stringResource(R.string.webdav_address_placeholder)) },
                                 modifier = Modifier.fillMaxWidth(),
                                 singleLine = true
                             )
@@ -284,7 +333,7 @@ fun SettingsScreen(
                             OutlinedTextField(
                                 value = webDavUsername,
                                 onValueChange = { webDavUsername = it },
-                                label = { Text("用户名") },
+                                label = { Text(stringResource(R.string.webdav_username)) },
                                 modifier = Modifier.fillMaxWidth(),
                                 singleLine = true
                             )
@@ -292,7 +341,7 @@ fun SettingsScreen(
                             OutlinedTextField(
                                 value = webDavPassword,
                                 onValueChange = { webDavPassword = it },
-                                label = { Text("密码") },
+                                label = { Text(stringResource(R.string.webdav_password)) },
                                 modifier = Modifier.fillMaxWidth(),
                                 singleLine = true,
                                 visualTransformation = if (showPasswordVisible) VisualTransformation.None
@@ -314,14 +363,14 @@ fun SettingsScreen(
                                         scope.launch {
                                             val testConfig = WebDavConfig(webDavUrl, webDavUsername, webDavPassword, true)
                                             val result = app.webDavManager.testConnection(testConfig)
-                                            syncMessage = if (result.isSuccess) "连接成功！" else "连接失败: ${result.exceptionOrNull()?.message}"
+                                            syncMessage = if (result.isSuccess) connectionSuccessText else connectionFailedMsgTemplate.format(result.exceptionOrNull()?.message)
                                             isTesting = false
                                         }
                                     },
                                     enabled = !isTesting && webDavUrl.isNotBlank()
                                 ) {
                                     if (isTesting) CircularProgressIndicator(modifier = Modifier.size(16.dp))
-                                    else Text("测试连接")
+                                    else Text(stringResource(R.string.test_connection))
                                 }
                                 Button(
                                     onClick = {
@@ -329,11 +378,11 @@ fun SettingsScreen(
                                             app.settingsRepository.saveWebDavConfig(
                                                 WebDavConfig(webDavUrl, webDavUsername, webDavPassword, webDavEnabled)
                                             )
-                                            syncMessage = "配置已保存"
+                                            syncMessage = configSavedText
                                             showWebDavSection = false
                                         }
                                     }
-                                ) { Text("保存配置") }
+                                ) { Text(stringResource(R.string.save_config)) }
                             }
                         }
                     }
@@ -342,103 +391,38 @@ fun SettingsScreen(
             item {
                 SettingsItem(
                     icon = Icons.Default.Sync,
-                    title = if (isSyncing) "同步中..." else "立即同步",
-                    subtitle = if (isSyncing) "正在同步数据，请稍候" else "将本地数据同步到云端",
+                    title = if (isSyncing) stringResource(R.string.syncing) else stringResource(R.string.sync_now),
+                    subtitle = if (isSyncing) stringResource(R.string.syncing_subtitle) else stringResource(R.string.sync_subtitle),
                     onClick = {
                         if (isSyncing) return@SettingsItem
                         scope.launch {
                             val config = app.settingsRepository.webDavConfig.first()
                             if (!config.enabled || config.url.isBlank()) {
-                                syncMessage = "请先配置并启用 WebDAV"
+                                syncMessage = pleaseConfigureWebdavText
                                 return@launch
                             }
                             isSyncing = true
                             syncMessage = null
-                            when (val result = app.webDavManager.syncMulti(config, app.dbManager)) {
-                                is SyncResult.Success -> syncMessage = "✅ 同步成功"
-                                is SyncResult.Error -> syncMessage = "❌ 同步失败: ${result.message}"
-                                is SyncResult.Conflict -> {
-                                    conflictData = result.localTime to result.remoteTime
-                                    conflictConfig = config
-                                    multiConflictFiles = emptyList()
-                                    showConflictDialog = true
+                            viewModel.syncNow(config) { result ->
+                                syncMessage = when (result) {
+                                    is SyncResult.Success -> syncSuccessText
+                                    is SyncResult.Error -> syncFailedTemplate.format(result.message)
+                                    else -> syncCompleteText
                                 }
-                                is SyncResult.MultiConflict -> {
-                                    conflictConfig = config
-                                    multiConflictFiles = result.conflictFiles
-                                    conflictData = null
-                                    showConflictDialog = true
-                                }
-                                is SyncResult.SizeMismatch -> {
-                                    conflictConfig = config
-                                    multiConflictFiles = result.conflictFiles
-                                    conflictData = null
-                                    showConflictDialog = true
-                                }
-                                else -> {}
+                                isSyncing = false
                             }
-                            isSyncing = false
-                        }
-                    }
-                )
-            }
-            // 从备份恢复
-            item {
-                SettingsItem(
-                    icon = Icons.Default.History,
-                    title = "从备份恢复",
-                    subtitle = "选择云端历史版本恢复数据",
-                    onClick = {
-                        if (isSyncing) return@SettingsItem
-                        scope.launch {
-                            val config = app.settingsRepository.webDavConfig.first()
-                            if (!config.enabled || config.url.isBlank()) {
-                                syncMessage = "请先配置并启用 WebDAV"
-                                return@launch
-                            }
-                            isSyncing = true
-                            syncMessage = "正在获取备份列表..."
-                            val backups = app.webDavManager.getRemoteBackups(config)
-                            isSyncing = false
-                            if (backups.isEmpty()) {
-                                syncMessage = "❌ 未找到云端备份（请先同步一次）"
-                            } else {
-                                backupVersions = backups
-                                backupConfig = config
-                                showBackupDialog = true
-                                syncMessage = null
-                            }
-                        }
-                    }
-                )
-            }
-            // 清理旧版云端文件
-            item {
-                SettingsItem(
-                    icon = Icons.Default.CleaningServices,
-                    title = "清理旧版云端格式",
-                    subtitle = "删除云端旧版 bookkeeper.db（已迁移数据不受影响）",
-                    onClick = {
-                        scope.launch {
-                            val config = app.settingsRepository.webDavConfig.first()
-                            if (!config.enabled || config.url.isBlank()) {
-                                syncMessage = "请先配置 WebDAV"
-                                return@launch
-                            }
-                            val success = app.webDavManager.deleteRemoteLegacyFile(config)
-                            syncMessage = if (success) "✅ 旧版云端文件已清理" else "❌ 清理失败或文件不存在"
                         }
                     }
                 )
             }
 
             // ——— 数据管理 ———
-            item { SettingsSectionHeader("数据管理") }
+            item { SettingsSectionHeader(stringResource(R.string.data_management)) }
             item {
                 SettingsItem(
                     icon = Icons.Default.Upload,
-                    title = "导出数据",
-                    subtitle = "将所有数据库导出为 .zip 文件",
+                    title = stringResource(R.string.export_csv),
+                    subtitle = stringResource(R.string.export_csv_subtitle),
                     onClick = {
                         val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
                         exportLauncher.launch("bookkeeper_$timestamp.zip")
@@ -448,16 +432,16 @@ fun SettingsScreen(
             item {
                 SettingsItem(
                     icon = Icons.Default.Download,
-                    title = "导入数据",
-                    subtitle = "从 .zip 或旧版 .db 文件恢复数据",
-                    onClick = { importLauncher.launch("*/*") }
+                    title = stringResource(R.string.import_csv),
+                    subtitle = stringResource(R.string.import_csv_subtitle),
+                    onClick = { importLauncher.launch("application/zip") }
                 )
             }
             item {
                 SettingsItem(
                     icon = Icons.Default.Description,
-                    title = "导出日志",
-                    subtitle = "将运行日志导出为文本文件供分析",
+                    title = stringResource(R.string.export_log),
+                    subtitle = stringResource(R.string.export_log_subtitle),
                     onClick = {
                         val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
                         exportLogLauncher.launch("bookkeeper_log_$timestamp.txt")
@@ -466,12 +450,12 @@ fun SettingsScreen(
             }
 
             // ——— 分类管理 ———
-            item { SettingsSectionHeader("分类管理") }
+            item { SettingsSectionHeader(stringResource(R.string.category_management)) }
             item {
                 SettingsItem(
                     icon = Icons.Default.Add,
-                    title = "添加自定义分类",
-                    subtitle = "新增收入或支出分类",
+                    title = stringResource(R.string.add_custom_category),
+                    subtitle = stringResource(R.string.add_custom_category_subtitle),
                     onClick = { showAddCategoryDialog = true }
                 )
             }
@@ -493,7 +477,7 @@ fun SettingsScreen(
         Snackbar(
             modifier = Modifier.padding(16.dp),
             action = {
-                TextButton(onClick = { syncMessage = null }) { Text("关闭") }
+                TextButton(onClick = { syncMessage = null }) { Text(stringResource(R.string.close)) }
             }
         ) { Text(msg) }
     }
@@ -504,7 +488,7 @@ fun SettingsScreen(
             onConfirm = { newPassword ->
                 scope.launch {
                     app.passwordManager.setPassword(newPassword)
-                    syncMessage = "密码已设置"
+                    syncMessage = passwordSetSuccessText
                 }
                 showSetPasswordDialog = false
             },
@@ -512,20 +496,20 @@ fun SettingsScreen(
         )
     }
 
-    // 关闭密码确认
+    // 关闭应用锁密码确认
     if (showDisablePasswordDialog) {
         AlertDialog(
             onDismissRequest = { showDisablePasswordDialog = false },
-            title = { Text("关闭密码保护") },
-            text = { Text("关闭后应用将不再需要密码验证，确定要关闭吗？") },
+            title = { Text(stringResource(R.string.close_password_protection)) },
+            text = { Text(stringResource(R.string.close_password_warning)) },
             confirmButton = {
                 TextButton(onClick = {
                     scope.launch { app.passwordManager.disablePassword() }
                     showDisablePasswordDialog = false
-                }) { Text("确定", color = MaterialTheme.colorScheme.error) }
+                }) { Text(stringResource(R.string.confirm), color = MaterialTheme.colorScheme.error) }
             },
             dismissButton = {
-                TextButton(onClick = { showDisablePasswordDialog = false }) { Text("取消") }
+                TextButton(onClick = { showDisablePasswordDialog = false }) { Text(stringResource(R.string.cancel)) }
             }
         )
     }
@@ -536,20 +520,20 @@ fun SettingsScreen(
         var verifyError by remember { mutableStateOf<String?>(null) }
         AlertDialog(
             onDismissRequest = { showPasswordVerifyForDisable = false },
-            title = { Text("验证密码") },
+            title = { Text(stringResource(R.string.verify_password_title)) },
             text = {
                 Column {
-                    Text("请输入密码以关闭生物识别", style = MaterialTheme.typography.bodyMedium)
+                    Text(stringResource(R.string.enter_password_to_disable_biometric), style = MaterialTheme.typography.bodyMedium)
                     Spacer(modifier = Modifier.height(12.dp))
                     OutlinedTextField(
                         value = passwordInput,
                         onValueChange = { passwordInput = it; verifyError = null },
-                        label = { Text("密码") },
+                        label = { Text(stringResource(R.string.webdav_password)) },
                         singleLine = true,
                         isError = verifyError != null,
                         modifier = Modifier.fillMaxWidth(),
-                        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done),
-                        keyboardActions = androidx.compose.foundation.text.KeyboardActions(
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done),
+                        keyboardActions = KeyboardActions(
                             onDone = {
                                 scope.launch {
                                     val ok = app.passwordManager.verifyPassword(passwordInput)
@@ -557,7 +541,7 @@ fun SettingsScreen(
                                         app.passwordManager.setBiometricEnabled(false)
                                         showPasswordVerifyForDisable = false
                                     } else {
-                                        verifyError = "密码错误"
+                                        verifyError = passwordErrorText
                                     }
                                 }
                             }
@@ -576,13 +560,13 @@ fun SettingsScreen(
                             app.passwordManager.setBiometricEnabled(false)
                             showPasswordVerifyForDisable = false
                         } else {
-                            verifyError = "密码错误"
+                            verifyError = passwordErrorText
                         }
                     }
-                }) { Text("确认") }
+                }) { Text(stringResource(R.string.confirm)) }
             },
             dismissButton = {
-                TextButton(onClick = { showPasswordVerifyForDisable = false }) { Text("取消") }
+                TextButton(onClick = { showPasswordVerifyForDisable = false }) { Text(stringResource(R.string.cancel)) }
             }
         )
     }
@@ -602,263 +586,6 @@ fun SettingsScreen(
     if (showAboutDialog) {
         AboutDialog(onDismiss = { showAboutDialog = false })
     }
-
-    // 冲突解决对话框
-    if (showConflictDialog) {
-        if (multiConflictFiles.isNotEmpty()) {
-            // 多文件冲突
-            MultiConflictResolveDialog(
-                conflictFiles = multiConflictFiles,
-                onResolve = { useLocal ->
-                    scope.launch {
-                        val cfg = conflictConfig ?: return@launch
-                        if (useLocal) {
-                            when (val result = app.webDavManager.syncMulti(cfg, app.dbManager, forceOverwrite = true)) {
-                                is SyncResult.Success, is SyncResult.SizeMismatch -> syncMessage = "✅ 已以本地数据为准同步到云端"
-                                is SyncResult.Error -> syncMessage = "❌ 同步失败: ${result.message}"
-                                else -> {}
-                            }
-                        } else {
-                            when (val result = app.webDavManager.downloadMulti(cfg, app.dbManager)) {
-                                is SyncResult.Success -> syncMessage = "✅ 已以云端数据为准覆盖本地"
-                                is SyncResult.Error -> syncMessage = "❌ 下载失败: ${result.message}"
-                                else -> {}
-                            }
-                        }
-                    }
-                    showConflictDialog = false
-                    conflictData = null
-                    conflictConfig = null
-                    multiConflictFiles = emptyList()
-                },
-                onDismiss = {
-                    showConflictDialog = false
-                    conflictData = null
-                    conflictConfig = null
-                    multiConflictFiles = emptyList()
-                }
-            )
-        } else if (conflictData != null) {
-            // 单文件冲突（兼容旧 UI）
-            val (localTime, remoteTime) = conflictData!!
-            val dateFormat = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
-            ConflictResolveDialog(
-                localTimeStr = dateFormat.format(Date(localTime)),
-                remoteTimeStr = dateFormat.format(Date(remoteTime)),
-                onResolve = { useLocal ->
-                    scope.launch {
-                        val cfg = conflictConfig ?: return@launch
-                        if (useLocal) {
-                            when (val result = app.webDavManager.syncMulti(cfg, app.dbManager, forceOverwrite = true)) {
-                                is SyncResult.Success, is SyncResult.SizeMismatch -> syncMessage = "✅ 已以本地数据为准覆盖云端"
-                                is SyncResult.Error -> syncMessage = "❌ 上传失败: ${result.message}"
-                                else -> {}
-                            }
-                        } else {
-                            when (val result = app.webDavManager.downloadMulti(cfg, app.dbManager)) {
-                                is SyncResult.Success -> syncMessage = "✅ 已以云端数据为准覆盖本地"
-                                is SyncResult.Error -> syncMessage = "❌ 下载失败: ${result.message}"
-                                else -> {}
-                            }
-                        }
-                    }
-                    showConflictDialog = false
-                    conflictData = null
-                    conflictConfig = null
-                },
-                onDismiss = {
-                    showConflictDialog = false
-                    conflictData = null
-                    conflictConfig = null
-                }
-            )
-        }
-    }
-
-    // 备份版本选择对话框（独立于冲突对话框）
-    if (showBackupDialog) {
-        BackupVersionDialog(
-            versions = backupVersions,
-            onSelect = { version ->
-                scope.launch {
-                    val cfg = backupConfig ?: return@launch
-                    syncMessage = "正在恢复 ${version.displayName}..."
-                    isSyncing = true
-                    val result = app.webDavManager.restoreFromBackup(cfg, app.dbManager, version)
-                    isSyncing = false
-                    syncMessage = when (result) {
-                        is SyncResult.Success -> "✅ 已恢复到 ${version.displayName}，请重启应用"
-                        is SyncResult.Error -> "❌ 恢复失败: ${result.message}"
-                        else -> "恢复完成"
-                    }
-                    showBackupDialog = false
-                }
-            },
-            onDismiss = { showBackupDialog = false }
-        )
-    }
-}
-
-// 多文件冲突解决对话框
-@Composable
-fun MultiConflictResolveDialog(
-    conflictFiles: List<ConflictFile>,
-    onResolve: (useLocal: Boolean) -> Unit,
-    onDismiss: () -> Unit
-) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        icon = { Icon(Icons.Default.Sync, contentDescription = null) },
-        title = { Text("检测到多文件冲突", fontWeight = FontWeight.Bold) },
-        text = {
-            Column {
-                Text("以下 ${conflictFiles.size} 个文件本地与云端不一致：")
-                Spacer(modifier = Modifier.height(8.dp))
-                conflictFiles.forEach { cf ->
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            Icons.Default.Description,
-                            contentDescription = null,
-                            modifier = Modifier.size(16.dp),
-                            tint = MaterialTheme.colorScheme.primary
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(cf.fileName, fontWeight = FontWeight.Medium, fontSize = 13.sp)
-                    }
-                }
-                Spacer(modifier = Modifier.height(12.dp))
-                Text("请选择以哪端数据为准：", style = MaterialTheme.typography.bodySmall)
-            }
-        },
-        confirmButton = {
-            Column {
-                TextButton(
-                    onClick = { onResolve(true) },
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text("📱 以本地数据为准")
-                }
-                TextButton(
-                    onClick = { onResolve(false) },
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text("☁️ 以云端数据为准")
-                }
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("取消")
-            }
-        }
-    )
-}
-
-// 冲突解决对话框
-@Composable
-fun ConflictResolveDialog(
-    localTimeStr: String,
-    remoteTimeStr: String,
-    onResolve: (useLocal: Boolean) -> Unit,
-    onDismiss: () -> Unit
-) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        icon = { Icon(Icons.Default.Sync, contentDescription = null) },
-        title = { Text("检测到冲突", fontWeight = FontWeight.Bold) },
-        text = {
-            Column {
-                Text("本地数据最后修改时间：")
-                Text(localTimeStr, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Medium)
-                Spacer(modifier = Modifier.height(8.dp))
-                Text("云端数据最后修改时间：")
-                Text(remoteTimeStr, color = MaterialTheme.colorScheme.secondary, fontWeight = FontWeight.Medium)
-                Spacer(modifier = Modifier.height(16.dp))
-                Text("请选择以哪端数据为准：")
-            }
-        },
-        confirmButton = {
-            Column {
-                TextButton(
-                    onClick = { onResolve(true) },
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text("📱 以本地数据为准")
-                }
-                TextButton(
-                    onClick = { onResolve(false) },
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text("☁️ 以云端数据为准")
-                }
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("取消")
-            }
-        }
-    )
-}
-
-// 备份版本选择对话框
-@Composable
-fun BackupVersionDialog(
-    versions: List<BackupVersion>,
-    onSelect: (BackupVersion) -> Unit,
-    onDismiss: () -> Unit
-) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        icon = { Icon(Icons.Default.History, contentDescription = null) },
-        title = { Text("选择备份版本", fontWeight = FontWeight.Bold) },
-        text = {
-            Column {
-                Text("云端共有 ${versions.size} 个备份版本：")
-                Spacer(modifier = Modifier.height(8.dp))
-                LazyColumn(modifier = Modifier.heightIn(max = 300.dp)) {
-                    items(versions.size) { index ->
-                        val version = versions[index]
-                        Surface(
-                            onClick = { onSelect(version) },
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = MaterialTheme.shapes.small
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(12.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Icon(
-                                    Icons.Default.CalendarToday,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.primary
-                                )
-                                Spacer(modifier = Modifier.width(12.dp))
-                                Column {
-                                    Text(version.displayName, fontWeight = FontWeight.Medium)
-                                    Text(
-                                        "文件名: ${version.fileName}",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
-                            }
-                        }
-                        if (index < versions.size - 1) {
-                            HorizontalDivider(modifier = Modifier.padding(horizontal = 8.dp))
-                        }
-                    }
-                }
-            }
-        },
-        confirmButton = {},
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text("取消") }
-        }
-    )
 }
 
 // ——— 工具组件 ———
@@ -933,6 +660,8 @@ fun SettingsSwitchItem(
 
 @Composable
 fun CategorySettingsItem(category: Category, onDelete: () -> Unit) {
+    val incomeText = stringResource(R.string.income)
+    val expenseText = stringResource(R.string.expense)
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -940,11 +669,11 @@ fun CategorySettingsItem(category: Category, onDelete: () -> Unit) {
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(
-            "${category.name} (${if (category.type == TransactionType.INCOME) "收入" else "支出"})",
+            "${category.name} (${if (category.type == TransactionType.INCOME) incomeText else expenseText})",
             modifier = Modifier.weight(1f)
         )
         IconButton(onClick = onDelete) {
-            Icon(Icons.Default.Delete, contentDescription = "删除", tint = MaterialTheme.colorScheme.error)
+            Icon(Icons.Default.Delete, contentDescription = stringResource(R.string.delete), tint = MaterialTheme.colorScheme.error)
         }
     }
 }
@@ -956,15 +685,19 @@ fun SetPasswordDialog(onConfirm: (String) -> Unit, onDismiss: () -> Unit) {
     var error by remember { mutableStateOf("") }
     var visible by remember { mutableStateOf(false) }
 
+    // 预提取 onClick 中需要的字符串
+    val passwordMinLengthError = stringResource(R.string.password_min_length)
+    val passwordMismatchError = stringResource(R.string.password_mismatch)
+
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("设置密码") },
+        title = { Text(stringResource(R.string.set_password_title)) },
         text = {
             Column {
                 OutlinedTextField(
                     value = password,
                     onValueChange = { password = it; error = "" },
-                    label = { Text("新密码（至少4位）") },
+                    label = { Text(stringResource(R.string.new_password)) },
                     visualTransformation = if (visible) VisualTransformation.None else PasswordVisualTransformation(),
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
@@ -973,7 +706,7 @@ fun SetPasswordDialog(onConfirm: (String) -> Unit, onDismiss: () -> Unit) {
                 OutlinedTextField(
                     value = confirm,
                     onValueChange = { confirm = it; error = "" },
-                    label = { Text("确认密码") },
+                    label = { Text(stringResource(R.string.confirm_password)) },
                     visualTransformation = if (visible) VisualTransformation.None else PasswordVisualTransformation(),
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
@@ -986,14 +719,14 @@ fun SetPasswordDialog(onConfirm: (String) -> Unit, onDismiss: () -> Unit) {
         confirmButton = {
             TextButton(onClick = {
                 when {
-                    password.length < 4 -> error = "密码至少4位"
-                    password != confirm -> error = "两次密码不一致"
+                    password.length < 4 -> error = passwordMinLengthError
+                    password != confirm -> error = passwordMismatchError
                     else -> onConfirm(password)
                 }
-            }) { Text("确定") }
+            }) { Text(stringResource(R.string.confirm)) }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("取消") }
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) }
         }
     )
 }
@@ -1005,13 +738,13 @@ fun AddCategoryDialog(onConfirm: (Category) -> Unit, onDismiss: () -> Unit) {
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("添加分类") },
+        title = { Text(stringResource(R.string.add_category)) },
         text = {
             Column {
                 OutlinedTextField(
                     value = name,
                     onValueChange = { name = it },
-                    label = { Text("分类名称") },
+                    label = { Text(stringResource(R.string.category_name)) },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -1020,12 +753,12 @@ fun AddCategoryDialog(onConfirm: (Category) -> Unit, onDismiss: () -> Unit) {
                     FilterChip(
                         selected = type == TransactionType.EXPENSE,
                         onClick = { type = TransactionType.EXPENSE },
-                        label = { Text("支出") }
+                        label = { Text(stringResource(R.string.expense)) }
                     )
                     FilterChip(
                         selected = type == TransactionType.INCOME,
                         onClick = { type = TransactionType.INCOME },
-                        label = { Text("收入") }
+                        label = { Text(stringResource(R.string.income)) }
                     )
                 }
             }
@@ -1035,43 +768,26 @@ fun AddCategoryDialog(onConfirm: (Category) -> Unit, onDismiss: () -> Unit) {
                 if (name.isNotBlank()) {
                     onConfirm(Category(name = name.trim(), type = type))
                 }
-            }) { Text("添加") }
+            }) { Text(stringResource(R.string.add_button)) }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("取消") }
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) }
         }
     )
 }
 
 // ——— 数据导入导出 ———
 
-/**
- * 导入数据：自动检测 zip 或 db 格式
- */
 suspend fun importData(context: Context, uri: Uri): Boolean {
     return try {
-        // 复制到临时文件
         val tempFile = File(context.cacheDir, "import_temp")
         context.contentResolver.openInputStream(uri)?.use { input ->
             tempFile.outputStream().use { input.copyTo(it) }
         }
 
-        val success = when {
-            DataExporter.isZipFile(tempFile) -> {
-                AppLogger.i("SettingsScreen", "检测到 zip 格式，使用多文件导入")
-                DataExporter.importFromZip(context, tempFile)
-            }
-            tempFile.exists() && tempFile.length() > 0 -> {
-                // 不管是未加密 SQLite 还是加密 SQLCipher .db，都尝试导入
-                AppLogger.i("SettingsScreen", "检测到 db 文件，使用迁移导入")
-                DataExporter.importLegacyDb(context, tempFile)
-            }
-            else -> {
-                AppLogger.w("SettingsScreen", "无法识别的文件格式")
-                false
-            }
-        }
-
+        val app = context.applicationContext as? com.simplebookkeeper.BookkeeperApp
+        // 导入时暂不传密码，后续可通过对话框输入
+        val success = DataExporter.importFromZip(context, tempFile, null)
         tempFile.delete()
         success
     } catch (e: Exception) {
@@ -1080,7 +796,7 @@ suspend fun importData(context: Context, uri: Uri): Boolean {
     }
 }
 
-/** 将所有日志合并写入用户选择的 Uri（分享/保存） */
+/** 将所有日志合并写入用户选择的 Uri */
 suspend fun exportLogsToUri(context: Context, uri: Uri) {
     try {
         val exportFile = AppLogger.exportAll(context)
@@ -1109,7 +825,7 @@ fun AboutDialog(onDismiss: () -> Unit) {
         },
         title = {
             Text(
-                "简单记账",
+                stringResource(R.string.app_name),
                 style = MaterialTheme.typography.headlineSmall,
                 fontWeight = FontWeight.Bold
             )
@@ -1125,7 +841,7 @@ fun AboutDialog(onDismiss: () -> Unit) {
                     color = MaterialTheme.colorScheme.primaryContainer
                 ) {
                     Text(
-                        "v 0.3.7",
+                        "v${BuildConfig.VERSION_NAME}",
                         style = MaterialTheme.typography.labelLarge,
                         color = MaterialTheme.colorScheme.onPrimaryContainer,
                         modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
@@ -1134,15 +850,15 @@ fun AboutDialog(onDismiss: () -> Unit) {
                 Spacer(modifier = Modifier.height(4.dp))
                 HorizontalDivider()
                 Spacer(modifier = Modifier.height(4.dp))
-                AboutInfoRow(label = "开发者", value = "EW")
-                AboutInfoRow(label = "功能", value = "收支记录 · 统计分析 · 云端同步")
-                AboutInfoRow(label = "数据存储", value = "按年分库 · Room 数据库")
-                AboutInfoRow(label = "云同步", value = "WebDAV 多文件同步")
+                AboutInfoRow(label = stringResource(R.string.about_developer), value = "EW")
+                AboutInfoRow(label = stringResource(R.string.about_features_label), value = stringResource(R.string.about_features))
+                AboutInfoRow(label = stringResource(R.string.about_data_storage), value = stringResource(R.string.about_storage))
+                AboutInfoRow(label = stringResource(R.string.about_cloud_sync), value = stringResource(R.string.about_sync))
                 Spacer(modifier = Modifier.height(4.dp))
                 HorizontalDivider()
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
-                    "数据完全存储在本地，保护您的隐私安全。",
+                    stringResource(R.string.about_privacy),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     textAlign = androidx.compose.ui.text.style.TextAlign.Center
@@ -1150,7 +866,7 @@ fun AboutDialog(onDismiss: () -> Unit) {
             }
         },
         confirmButton = {
-            TextButton(onClick = onDismiss) { Text("关闭") }
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.close)) }
         }
     )
 }
@@ -1172,5 +888,93 @@ private fun AboutInfoRow(label: String, value: String) {
             style = MaterialTheme.typography.bodySmall,
             fontWeight = FontWeight.Medium
         )
+    }
+}
+
+@Composable
+private fun ThemeModeSelector(
+    currentMode: ThemeMode,
+    onModeChange: (ThemeMode) -> Unit
+) {
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 2.dp),
+        shape = MaterialTheme.shapes.medium
+    ) {
+        Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    Icons.Default.Palette,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary
+                )
+                Spacer(modifier = Modifier.width(16.dp))
+                Text(stringResource(R.string.theme_mode), fontWeight = FontWeight.Medium)
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+            ThemeMode.entries.forEach { mode ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    RadioButton(
+                        selected = mode == currentMode,
+                        onClick = { onModeChange(mode) }
+                    )
+                    Text(
+                        stringResource(mode.displayNameResId),
+                        modifier = Modifier.padding(start = 4.dp),
+                        style = MaterialTheme.typography.bodyLarge
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun LanguageModeSelector(
+    currentMode: LanguageMode,
+    onModeChange: (LanguageMode) -> Unit
+) {
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 2.dp),
+        shape = MaterialTheme.shapes.medium
+    ) {
+        Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    Icons.Default.Language,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary
+                )
+                Spacer(modifier = Modifier.width(16.dp))
+                Text(stringResource(R.string.language), fontWeight = FontWeight.Medium)
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+            LanguageMode.entries.forEach { mode ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    RadioButton(
+                        selected = mode == currentMode,
+                        onClick = { onModeChange(mode) }
+                    )
+                    Text(
+                        stringResource(mode.displayNameResId),
+                        modifier = Modifier.padding(start = 4.dp),
+                        style = MaterialTheme.typography.bodyLarge
+                    )
+                }
+            }
+        }
     }
 }

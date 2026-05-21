@@ -10,9 +10,11 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import com.simplebookkeeper.R
 import com.simplebookkeeper.data.model.TransactionType
 import com.simplebookkeeper.ui.components.TransactionItem
 import com.simplebookkeeper.viewmodel.MainViewModel
@@ -52,7 +54,7 @@ fun SearchScreen(
             modifier = Modifier.fillMaxWidth()
         ) {
             Text(
-                "搜索",
+                stringResource(R.string.search_title),
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onPrimary,
@@ -65,7 +67,7 @@ fun SearchScreen(
             OutlinedTextField(
                 value = keyword,
                 onValueChange = { keyword = it },
-                label = { Text("备注关键词") },
+                label = { Text(stringResource(R.string.search_hint)) },
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true
             )
@@ -77,7 +79,7 @@ fun SearchScreen(
                 OutlinedTextField(
                     value = minAmount,
                     onValueChange = { minAmount = it },
-                    label = { Text("最小金额") },
+                    label = { Text(stringResource(R.string.min_amount)) },
                     prefix = { Text("¥") },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                     modifier = Modifier.weight(1f),
@@ -86,7 +88,7 @@ fun SearchScreen(
                 OutlinedTextField(
                     value = maxAmount,
                     onValueChange = { maxAmount = it },
-                    label = { Text("最大金额") },
+                    label = { Text(stringResource(R.string.max_amount)) },
                     prefix = { Text("¥") },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                     modifier = Modifier.weight(1f),
@@ -101,7 +103,7 @@ fun SearchScreen(
                 OutlinedTextField(
                     value = startDateText,
                     onValueChange = {},
-                    label = { Text("开始日期") },
+                    label = { Text(stringResource(R.string.start_date)) },
                     readOnly = true,
                     modifier = Modifier.weight(1f),
                     enabled = false,
@@ -119,7 +121,7 @@ fun SearchScreen(
                 OutlinedTextField(
                     value = endDateText,
                     onValueChange = {},
-                    label = { Text("结束日期") },
+                    label = { Text(stringResource(R.string.end_date)) },
                     readOnly = true,
                     modifier = Modifier.weight(1f),
                     enabled = false,
@@ -140,7 +142,7 @@ fun SearchScreen(
 
             // 收支类型
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                listOf(null to "全部", TransactionType.EXPENSE to "支出", TransactionType.INCOME to "收入").forEach { (type, label) ->
+                listOf(null to stringResource(R.string.all), TransactionType.EXPENSE to stringResource(R.string.expense), TransactionType.INCOME to stringResource(R.string.income)).forEach { (type, label) ->
                     FilterChip(
                         selected = selectedType == type,
                         onClick = { selectedType = type },
@@ -157,7 +159,7 @@ fun SearchScreen(
             else allCategories
 
             if (filteredCats.isNotEmpty()) {
-                Text("分类", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(stringResource(R.string.category), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
@@ -165,7 +167,7 @@ fun SearchScreen(
                     FilterChip(
                         selected = selectedCategoryId == null,
                         onClick = { selectedCategoryId = null },
-                        label = { Text("全部") }
+                        label = { Text(stringResource(R.string.all)) }
                     )
                     filteredCats.take(5).forEach { cat ->
                         FilterChip(
@@ -204,7 +206,7 @@ fun SearchScreen(
             ) {
                 Icon(Icons.Default.Search, contentDescription = null)
                 Spacer(modifier = Modifier.width(8.dp))
-                Text("搜索")
+                Text(stringResource(R.string.search_button))
             }
         }
 
@@ -218,11 +220,11 @@ fun SearchScreen(
         } else if (hasSearched) {
             if (searchState.results.isEmpty()) {
                 Box(modifier = Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
-                    Text("未找到符合条件的记录", color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f))
+                    Text(stringResource(R.string.no_results), color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f))
                 }
             } else {
                 Text(
-                    "共 ${searchState.results.size} 条记录",
+                    stringResource(R.string.result_count, searchState.results.size),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
@@ -252,9 +254,9 @@ fun SearchScreen(
                         startDateText = dateFormat.format(startDate!!)
                     }
                     showStartPicker = false
-                }) { Text("确定") }
+                }) { Text(stringResource(R.string.confirm)) }
             },
-            dismissButton = { TextButton(onClick = { showStartPicker = false }) { Text("取消") } }
+            dismissButton = { TextButton(onClick = { showStartPicker = false }) { Text(stringResource(R.string.cancel)) } }
         ) { DatePicker(state = state) }
     }
 
@@ -269,9 +271,9 @@ fun SearchScreen(
                         endDateText = dateFormat.format(endDate!!)
                     }
                     showEndPicker = false
-                }) { Text("确定") }
+                }) { Text(stringResource(R.string.confirm)) }
             },
-            dismissButton = { TextButton(onClick = { showEndPicker = false }) { Text("取消") } }
+            dismissButton = { TextButton(onClick = { showEndPicker = false }) { Text(stringResource(R.string.cancel)) } }
         ) { DatePicker(state = state) }
     }
 }

@@ -2,7 +2,9 @@
 
 > 一款轻量、简洁、注重隐私的 Android 个人记账应用，支持收入/支出管理、储蓄追踪、WebDAV 云端同步
 
-**版本**：v 0.3.9　｜　**最低系统**：Android 12（API 31）
+**版本**：v0.4.0　｜　**最低系统**：Android 12（API 31）
+
+[English](README.en.md) ｜ [繁體中文](README.zh-TW.md)
 
 ---
 
@@ -12,17 +14,31 @@
 - 按自然月记录每笔收入 / 支出，支持月份前后切换
 - 每笔记录包含：金额、分类、付款方式、日期、备注
 - 支持付款方式：微信 / 支付宝 / 现金 / 银行卡等
-- 点击记录进入编辑页，数据自动回填，**右上角可删除记录**
+- 点击记录进入编辑页，数据自动回填，右上角可删除记录
+
+### 🏦 储蓄
+- 独立储蓄管理模块，追踪银行账户实际存款
+- 支持储蓄存入与支取，自动计算总额与年储蓄趋势
+- 年储蓄 = 储蓄总额 - 支取总额
 
 ### 📊 统计
 - 按月展示收支汇总与分类占比图表
-- 按年展示年收入、年支出、年结余、**年储蓄**
-- 年储蓄 = 储蓄总额 - 支取总额（追踪银行账户实际存款）
+- 按年展示年收入、年支出、年结余、年储蓄
 - 支持点击图表条目查看对应明细记录
 
 ### 🔍 搜索
 - 四维度模糊搜索：时间范围 + 金额范围 + 分类 + 备注关键词
 - 结果实时更新，支持点击跳转编辑
+
+### 🌐 多语言
+- 支持简体中文、繁體中文、English 三种语言
+- 跟随系统 / 手动切换，即时生效
+- 界面所有文字均已国际化
+
+### 🎨 外观
+- 支持浅色 / 深色 / 跟随系统三种主题模式
+- Material You 动态配色
+- 适配手机（底部导航栏）与平板（侧边 NavigationRail）
 
 ### ⚙️ 设置
 | 功能 | 说明 |
@@ -31,9 +47,11 @@
 | 生物识别 | 支持指纹 / 面容解锁（硬件不支持时自动隐藏），关闭时需密码验证 |
 | 数据库加密 | SQLCipher AES-256 全库加密，密钥由 Android Keystore 托管 |
 | WebDAV 云同步 | 配置私有云服务器，数据库自动备份到云端 |
-| 数据导出/导入 | `.db` 文件格式，支持完整数据迁移 |
+| 数据导出/导入 | 加密 ZIP 格式，支持完整数据迁移，密码与应用锁统一 |
 | 导出日志 | 导出运行日志文本，便于排查同步问题 |
 | 分类管理 | 查看 / 删除自定义分类 |
+| 语言切换 | 简体中文 / 繁體中文 / English / 跟随系统 |
+| 主题模式 | 浅色 / 深色 / 跟随系统 |
 
 ---
 
@@ -61,10 +79,10 @@
 
 **配置路径：** 设置 → WebDAV 同步 → 配置服务器地址、用户名、密码
 
-**⚠️ 重要说明：**
-- v0.3.x 采用新的多文件架构（bookkeeper_YYYY.db + bookkeeper_meta.db）
-- **旧版本（v0.2.x）的云端数据无法直接同步恢复**
-- 如需从旧版本升级，请先用旧版本导出数据，然后在新版本导入
+**数据导出格式：**
+- ZIP 压缩包内含数据库文件与 meta.json
+- 可选 AES-256 加密，加密密码与应用锁密码统一
+- 支持导入恢复，兼容跨设备数据迁移
 
 ---
 
@@ -91,6 +109,7 @@
 | 后台任务 | WorkManager |
 | 安全 | Biometric API + Security Crypto + SQLCipher |
 | 架构 | MVVM（ViewModel + Flow + Repository） |
+| 国际化 | 3 套 strings.xml（简中/繁中/英文）+ 运行时切换 |
 | 适配 | 手机（底部导航栏）+ 平板（侧边 NavigationRail） |
 
 ---
@@ -125,18 +144,15 @@ app/build/outputs/apk/debug/app-debug.apk
 
 | 版本 | 说明 |
 |------|------|
-| v 0.3.9 | **Bug 修复**：修复分类丢失问题 - MetaDatabase onCreate 中使用同步 SQL 插入默认分类，确保 onCreate 返回前分类已完全插入 |
-| v 0.3.8 | **Bug 修复**：修复应用重启后分类丢失问题（不再误删数据库）；新增应用开屏页面；新增刷新按钮；修复搜索状态异常时一直显示加载图标；修复 MetaDatabase onCreate 回调空指针 |
-| v 0.3.7 | **Bug 修复**：修复 SyncWorker 单例冲突导致的数据库连接泄漏；修复跨年搜索失效；修复应用启动时数据库初始化未等待完成；修复密码哈希安全性（PBKDF2+盐值）；修复同步后 DatabaseManager 引用失效 |
-| v 0.3.6 | **安全增强**：SQLCipher AES-256 数据库加密（Android Keystore 密钥管理）；修复 WebDAV 备份文件名解析错误；修复冲突解决"以本地为准"实际未上传的问题；修复 WebDAV PROPFIND 正则大小写兼容；修复加密迁移后分类/交易重复；关闭生物识别增加密码二次验证 |
-| v 0.3.5 | 修复 WebDAV 同步空数据库问题；优化同步冲突处理逻辑 |
-| v 0.3.0 | **重大更新**：数据库按年分库（bookkeeper_YYYY.db）+ 元数据库（bookkeeper_meta.db），解决单库膨胀问题；WebDAV 改为多文件同步+MD5校验；导入/导出改为 .zip 格式打包；迁移时自动拆分旧库 |
-| v 0.2.14 | 修复记账页分类添加后不显示、修复云端同步覆盖本地数据问题、修复本地导入数据不生效 |
-| v 0.2.13 | 修复编辑记录删除功能 |
-| v 0.2.12 | 统计页新增年储蓄统计（储蓄总额-支取总额） |
-| v 0.2.11 | 修复同步冲突选择界面、同步改用文件哈希检测 |
-| v 0.2.10 | 新增日志系统、数据导入导出、关于弹窗 |
-| v 0.1.0 | 初始版本，核心记账、搜索、统计功能 |
+| v0.4.0 | **架构重构 + 国际化**：回归单库架构（bookkeeper.db 含 Transaction + Category + Saving 三表）；新增储蓄管理模块；新增 i18n 多语言支持（简中/繁中/英文）；新增主题模式切换（浅色/深色/跟随系统）；数据导出改为加密 ZIP 格式；修复生物识别指纹弹窗不弹出（BiometricScheduler 队列堆积 + Activity onPause 自杀问题）；修复语言切换无限循环；版本号统一管理 |
+| v0.3.9 | 修复分类丢失问题 - MetaDatabase onCreate 中使用同步 SQL 插入默认分类 |
+| v0.3.8 | 修复应用重启后分类丢失问题；新增应用开屏页面；新增刷新按钮；修复搜索状态异常 |
+| v0.3.7 | 修复 SyncWorker 单例冲突导致的数据库连接泄漏；修复跨年搜索失效；修复密码哈希安全性（PBKDF2+盐值） |
+| v0.3.6 | SQLCipher AES-256 数据库加密；修复 WebDAV 多项问题；关闭生物识别增加密码二次验证 |
+| v0.3.5 | 修复 WebDAV 同步空数据库问题；优化同步冲突处理逻辑 |
+| v0.3.0 | 数据库按年分库 + 元数据库架构；WebDAV 多文件同步+MD5校验 |
+| v0.2.x | 基础功能迭代：记账、搜索、统计、同步、日志、导入导出 |
+| v0.1.0 | 初始版本，核心记账、搜索、统计功能 |
 
 ---
 
@@ -144,34 +160,33 @@ app/build/outputs/apk/debug/app-debug.apk
 
 ```
 app/src/main/java/com/simplebookkeeper/
-├── BookkeeperApp.kt          # Application 入口
+├── BookkeeperApp.kt           # Application 入口
 ├── crypto/
-│   └── DatabaseEncryption.kt  # SQLCipher 密钥管理（Android Keystore）
+│   └── DatabaseEncryption.kt   # SQLCipher 密钥管理（Android Keystore）
 ├── data/
-│   ├── AppDatabase.kt        # Room 数据库 & 默认分类（迁移兼容）
-│   ├── DatabaseManager.kt    # 按年分库管理器（LRU缓存）
-│   ├── MetaDatabase.kt       # 元数据库（分类存储）
-│   ├── DataMigrator.kt       # 旧库→分库迁移工具
-│   ├── DataExporter.kt       # .zip 导入/导出
-│   ├── dao/                  # TransactionDao, CategoryDao
-│   ├── model/                # Transaction, Category, Converters
-│   └── repository/           # TransactionRepository, SettingsRepository
+│   ├── AppDatabase.kt         # Room 数据库（Transaction + Category + Saving）
+│   ├── DatabaseManager.kt     # 数据库管理器
+│   ├── DataExporter.kt        # 加密 ZIP 导入/导出
+│   ├── dao/                   # TransactionDao, CategoryDao, SavingDao
+│   ├── model/                 # Transaction, Category, Saving
+│   └── repository/            # TransactionRepository, SavingRepository, SettingsRepository
 ├── security/
 │   ├── PasswordManager.kt     # 密码管理
-│   └── BiometricAuth.kt      # 生物识别
+│   └── BiometricAuth.kt      # 生物识别（生命周期安全处理）
 ├── sync/
-│   ├── WebDavManager.kt      # WebDAV 多文件同步核心
-│   └── SyncWorker.kt         # 后台同步任务
+│   ├── WebDavManager.kt       # WebDAV 同步核心
+│   └── SyncWorker.kt          # 后台同步任务
 ├── ui/
-│   ├── MainActivity.kt       # Activity 入口
-│   ├── AppNavigation.kt      # 导航图
-│   ├── screens/             # 页面组件
-│   ├── components/          # 公共 UI 组件
-│   └── theme/               # Material3 主题
+│   ├── MainActivity.kt        # Activity 入口
+│   ├── AppNavigation.kt       # 导航图
+│   ├── screens/               # 页面组件（账本/搜索/统计/储蓄/设置/锁屏/开屏）
+│   ├── components/            # 公共 UI 组件
+│   └── theme/                 # Material3 主题 + ThemeMode + LanguageMode
 ├── util/
-│   └── AppLogger.kt         # 文件日志
+│   ├── AppLogger.kt           # 文件日志
+│   └── LocaleHelper.kt        # 运行时语言切换
 └── viewmodel/
-    └── MainViewModel.kt     # 主 ViewModel
+    └── MainViewModel.kt       # 主 ViewModel
 ```
 
 ---

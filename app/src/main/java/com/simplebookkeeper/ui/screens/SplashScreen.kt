@@ -13,6 +13,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.simplebookkeeper.BuildConfig
 import com.simplebookkeeper.R
 
 @Composable
@@ -41,7 +42,7 @@ fun SplashScreen() {
             )
             Spacer(modifier = Modifier.height(48.dp))
             Text(
-                text = "v0.3.8",
+                text = "v${BuildConfig.VERSION_NAME}",
                 fontSize = 12.sp,
                 color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.7f)
             )

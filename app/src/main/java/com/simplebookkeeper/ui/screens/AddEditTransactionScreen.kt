@@ -20,8 +20,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.simplebookkeeper.R
 import com.simplebookkeeper.data.model.Category
 import com.simplebookkeeper.data.model.PaymentMethod
 import com.simplebookkeeper.data.model.Transaction
@@ -87,15 +89,18 @@ fun AddEditTransactionScreen(
         selectedCategoryId = filteredCategories.first().id
     }
 
-    val dateFormat = SimpleDateFormat("yyyy年MM月dd日", Locale.getDefault())
+    val dateFormat = SimpleDateFormat(stringResource(R.string.date_format), Locale.getDefault())
+
+    val titleEdit = stringResource(R.string.edit_record_title)
+    val titleAdd = stringResource(R.string.add_record_title)
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(if (isEditMode) "编辑记录" else "记账", fontWeight = FontWeight.Bold) },
+                title = { Text(if (isEditMode) titleEdit else titleAdd, fontWeight = FontWeight.Bold) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "返回")
+                        Icon(Icons.Default.ArrowBack, contentDescription = stringResource(R.string.back))
                     }
                 },
                 actions = {
@@ -103,7 +108,7 @@ fun AddEditTransactionScreen(
                         IconButton(onClick = { showDeleteDialog = true }) {
                             Icon(
                                 imageVector = Icons.Filled.Delete,
-                                contentDescription = "删除",
+                                contentDescription = stringResource(R.string.delete),
                                 tint = MaterialTheme.colorScheme.onPrimary
                             )
                         }
@@ -132,6 +137,8 @@ fun AddEditTransactionScreen(
                 .padding(16.dp)
         ) {
             // 收入/支出切换
+            val expenseText = stringResource(R.string.expense)
+            val incomeText = stringResource(R.string.income)
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -139,7 +146,7 @@ fun AddEditTransactionScreen(
                 horizontalArrangement = Arrangement.Center
             ) {
                 TypeTab(
-                    text = "支出",
+                    text = expenseText,
                     selected = selectedType == TransactionType.EXPENSE,
                     color = ExpenseRed,
                     onClick = {
@@ -149,7 +156,7 @@ fun AddEditTransactionScreen(
                 )
                 Spacer(modifier = Modifier.width(16.dp))
                 TypeTab(
-                    text = "收入",
+                    text = incomeText,
                     selected = selectedType == TransactionType.INCOME,
                     color = IncomeGreen,
                     onClick = {
@@ -165,7 +172,7 @@ fun AddEditTransactionScreen(
                 onValueChange = { v ->
                     if (v.matches(Regex("^\\d{0,10}(\\.\\d{0,2})?\$"))) amountText = v
                 },
-                label = { Text("金额") },
+                label = { Text(stringResource(R.string.amount)) },
                 prefix = { Text("¥") },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                 modifier = Modifier.fillMaxWidth(),
@@ -178,7 +185,7 @@ fun AddEditTransactionScreen(
             OutlinedTextField(
                 value = dateFormat.format(selectedDate),
                 onValueChange = {},
-                label = { Text("日期") },
+                label = { Text(stringResource(R.string.date)) },
                 readOnly = true,
                 modifier = Modifier
                     .fillMaxWidth()
@@ -194,7 +201,7 @@ fun AddEditTransactionScreen(
             Spacer(modifier = Modifier.height(12.dp))
 
             // 分类选择
-            Text("分类", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(stringResource(R.string.category), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(modifier = Modifier.height(8.dp))
             Box(
                 modifier = Modifier
@@ -222,7 +229,7 @@ fun AddEditTransactionScreen(
                         Box(contentAlignment = Alignment.Center, modifier = Modifier.padding(8.dp)) {
                             Icon(
                                 Icons.Default.Add,
-                                contentDescription = "添加分类",
+                                contentDescription = stringResource(R.string.add_category_icon),
                                 tint = MaterialTheme.colorScheme.primary,
                                 modifier = Modifier.size(20.dp)
                             )
@@ -234,17 +241,17 @@ fun AddEditTransactionScreen(
             Spacer(modifier = Modifier.height(12.dp))
 
             // 付款方式
-            Text("付款方式", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(stringResource(R.string.payment_method), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(modifier = Modifier.height(8.dp))
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 listOf(
-                    PaymentMethod.WECHAT to "微信",
-                    PaymentMethod.ALIPAY to "支付宝",
-                    PaymentMethod.CASH to "现金",
-                    PaymentMethod.BANK_CARD to "银行卡"
+                    PaymentMethod.WECHAT to stringResource(R.string.wechat),
+                    PaymentMethod.ALIPAY to stringResource(R.string.alipay),
+                    PaymentMethod.CASH to stringResource(R.string.cash),
+                    PaymentMethod.BANK_CARD to stringResource(R.string.card)
                 ).forEach { (method, label) ->
                     FilterChip(
                         selected = selectedPayment == method,
@@ -260,7 +267,7 @@ fun AddEditTransactionScreen(
             OutlinedTextField(
                 value = note,
                 onValueChange = { note = it },
-                label = { Text("备注（可选）") },
+                label = { Text(stringResource(R.string.note_optional)) },
                 modifier = Modifier.fillMaxWidth(),
                 maxLines = 2
             )
@@ -292,7 +299,7 @@ fun AddEditTransactionScreen(
                     .height(50.dp),
                 shape = RoundedCornerShape(12.dp)
             ) {
-                Text("保存", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                Text(stringResource(R.string.save), fontSize = 16.sp, fontWeight = FontWeight.Bold)
             }
         }
     }
@@ -310,10 +317,10 @@ fun AddEditTransactionScreen(
                         selectedDate = Date(it)
                     }
                     showDatePicker = false
-                }) { Text("确定") }
+                }) { Text(stringResource(R.string.confirm)) }
             },
             dismissButton = {
-                TextButton(onClick = { showDatePicker = false }) { Text("取消") }
+                TextButton(onClick = { showDatePicker = false }) { Text(stringResource(R.string.cancel)) }
             }
         ) {
             DatePicker(state = datePickerState)
@@ -327,12 +334,12 @@ fun AddEditTransactionScreen(
                 showAddCategoryDialog = false
                 newCategoryName = ""
             },
-            title = { Text("添加分类") },
+            title = { Text(stringResource(R.string.add_category)) },
             text = {
                 OutlinedTextField(
                     value = newCategoryName,
                     onValueChange = { newCategoryName = it },
-                    label = { Text("分类名称") },
+                    label = { Text(stringResource(R.string.category_name)) },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -354,13 +361,13 @@ fun AddEditTransactionScreen(
                         newCategoryName = ""
                     },
                     enabled = newCategoryName.trim().isNotEmpty()
-                ) { Text("添加") }
+                ) { Text(stringResource(R.string.add_button)) }
             },
             dismissButton = {
                 TextButton(onClick = {
                     showAddCategoryDialog = false
                     newCategoryName = ""
-                }) { Text("取消") }
+                }) { Text(stringResource(R.string.cancel)) }
             }
         )
     }
@@ -369,24 +376,23 @@ fun AddEditTransactionScreen(
     if (showDeleteDialog && transactionId != null) {
         AlertDialog(
             onDismissRequest = { showDeleteDialog = false },
-            title = { Text("删除记录", fontWeight = FontWeight.Bold) },
-            text = { Text("确定要删除这条记录吗？此操作不可恢复。") },
+            title = { Text(stringResource(R.string.delete_record_title), fontWeight = FontWeight.Bold) },
+            text = { Text(stringResource(R.string.delete_record_irreversible)) },
             confirmButton = {
                 TextButton(
                     onClick = {
-                        val year = java.util.Calendar.getInstance().apply { time = selectedDate }.get(java.util.Calendar.YEAR)
-                        viewModel.deleteTransactionById(transactionId, year) {
+                        viewModel.deleteTransactionById(transactionId) {
                             onBack()
                         }
                         showDeleteDialog = false
                     }
                 ) {
-                    Text("删除", color = MaterialTheme.colorScheme.error)
+                    Text(stringResource(R.string.delete), color = MaterialTheme.colorScheme.error)
                 }
             },
             dismissButton = {
                 TextButton(onClick = { showDeleteDialog = false }) {
-                    Text("取消")
+                    Text(stringResource(R.string.cancel))
                 }
             }
         )

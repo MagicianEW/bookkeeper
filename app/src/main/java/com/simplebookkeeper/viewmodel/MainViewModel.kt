@@ -4,9 +4,13 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.simplebookkeeper.BookkeeperApp
+import com.simplebookkeeper.data.DataExporter
 import com.simplebookkeeper.data.model.Category
+import com.simplebookkeeper.data.model.Saving
+import com.simplebookkeeper.data.model.SavingType
 import com.simplebookkeeper.data.model.Transaction
 import com.simplebookkeeper.data.model.TransactionType
+import com.simplebookkeeper.data.repository.SavingRepository
 import com.simplebookkeeper.data.repository.TransactionRepository
 import com.simplebookkeeper.data.repository.WebDavConfig
 import com.simplebookkeeper.sync.SyncResult
@@ -15,6 +19,7 @@ import com.simplebookkeeper.util.AppLogger
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import java.util.Calendar
+import java.util.Date
 
 data class HomeUiState(
     val monthlyIncome: Long = 0L,    // 单位：分
@@ -30,10 +35,18 @@ data class SearchUiState(
     val isSearching: Boolean = false
 )
 
+data class SavingsUiState(
+    val balance: Long = 0L,
+    val savings: List<Saving> = emptyList(),
+    val monthlyDeposit: Long = 0L,
+    val monthlyWithdraw: Long = 0L
+)
+
 class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private val app = application as BookkeeperApp
     private val repo: TransactionRepository = app.transactionRepository
+    private val savingRepo: SavingRepository = app.savingRepository
 
     // 当前显示月份
     private val _displayYear = MutableStateFlow(Calendar.getInstance().get(Calendar.YEAR))
@@ -84,14 +97,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _syncStatus = MutableStateFlow<String?>(null)
     val syncStatus: StateFlow<String?> = _syncStatus.asStateFlow()
 
-    // 储蓄余额
-    val savingsBalance: StateFlow<Long> = app.settingsRepository.savingsBalance
+    // ─── 储蓄相关 ──────────────────────────────────────────────
+
+    val savingsBalance: StateFlow<Long> = savingRepo.getBalance()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0L)
 
-    // 数据库迁移状态
-    val migrationState = app.dbManager.migrationState
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000),
-            com.simplebookkeeper.data.DatabaseManager.MigrationState.Idle)
+    val allSavings: StateFlow<List<Saving>> = savingRepo.getAllSavings()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     fun setDisplayMonth(year: Int, month: Int) {
         _displayYear.value = year
@@ -159,20 +171,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     // 根据ID删除账目
-    fun deleteTransactionById(id: Long, year: Int, onDone: () -> Unit = {}) {
+    fun deleteTransactionById(id: Long, onDone: () -> Unit = {}) {
         viewModelScope.launch {
-            repo.deleteTransactionById(id, year)
+            repo.deleteTransactionById(id)
             val config = app.settingsRepository.webDavConfig.first()
             if (config.enabled) SyncWorker.syncNow(app)
             onDone()
         }
-    }
-
-    // 计算年度储蓄（储蓄总额 - 支取总额）
-    suspend fun getYearlySavings(year: Int): Long {
-        val savingAmount = repo.getYearlySavingAmount(year)
-        val withdrawAmount = repo.getYearlyWithdrawAmount(year)
-        return savingAmount - withdrawAmount
     }
 
     // 分类管理
@@ -191,19 +196,94 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch { repo.deleteCategory(category) }
     }
 
-    // 手动同步（多文件）
-    fun syncNow(config: WebDavConfig, onResult: (SyncResult) -> Unit) {
+    // ─── 储蓄操作 ──────────────────────────────────────────────
+
+    fun addSaving(type: SavingType, amountYuan: Double, note: String, date: Date = Date()) {
         viewModelScope.launch {
-            val result = app.webDavManager.syncMulti(config, app.dbManager)
-            onResult(result)
+            val amountFen = (amountYuan * 100).toLong()
+            val saving = Saving(
+                type = type,
+                amount = amountFen,
+                note = note,
+                date = date,
+                createdAt = System.currentTimeMillis(),
+                updatedAt = System.currentTimeMillis()
+            )
+            savingRepo.addSaving(saving)
+            val config = app.settingsRepository.webDavConfig.first()
+            if (config.enabled) SyncWorker.syncNow(app)
         }
     }
 
-    // 下载云端数据库（冲突解决/首次恢复）
-    fun downloadFromCloud(config: WebDavConfig, onResult: (SyncResult) -> Unit) {
+    fun deleteSaving(saving: Saving) {
         viewModelScope.launch {
-            val result = app.webDavManager.downloadMulti(config, app.dbManager)
-            onResult(result)
+            savingRepo.deleteSaving(saving)
+        }
+    }
+
+    fun deleteSavingById(id: Long) {
+        viewModelScope.launch {
+            savingRepo.deleteSavingById(id)
+        }
+    }
+
+    // ─── 同步 ──────────────────────────────────────────────────
+
+    /** 手动同步：导出 ZIP → 上传到 WebDAV
+     *  password 参数保留用于外部（如恢复场景）传入临时密码；
+     *  若不传，则自动从 PasswordManager 的安全存储取出明文密码。
+     */
+    fun syncNow(config: WebDavConfig, password: String? = null, onResult: (SyncResult) -> Unit) {
+        viewModelScope.launch {
+            try {
+                val tempFile = java.io.File(app.cacheDir, "sync_export.zip")
+                // 优先使用传入的密码，否则从安全存储取明文密码
+                val exportPassword = if (app.passwordManager.isPasswordEnabled.first()) {
+                    password ?: app.passwordManager.getPlainPassword()
+                } else null
+                val success = DataExporter.exportToZip(app, tempFile, exportPassword)
+                if (success) {
+                    val zipBytes = tempFile.readBytes()
+                    tempFile.delete()
+                    val uploadSuccess = app.webDavManager.uploadData(zipBytes, config)
+                    if (uploadSuccess) {
+                        onResult(SyncResult.Success)
+                    } else {
+                        onResult(SyncResult.Error("上传失败"))
+                    }
+                } else {
+                    tempFile.delete()
+                    onResult(SyncResult.Error("导出失败"))
+                }
+            } catch (e: Exception) {
+                AppLogger.e("MainViewModel", "同步异常", e)
+                onResult(SyncResult.Error(e.message ?: "同步异常"))
+            }
+        }
+    }
+
+    /** 下载云端数据：从 WebDAV 下载 ZIP → 导入 */
+    fun downloadFromCloud(config: WebDavConfig, password: String? = null, onResult: (SyncResult) -> Unit) {
+        viewModelScope.launch {
+            try {
+                val zipBytes = app.webDavManager.downloadData(config)
+                if (zipBytes == null) {
+                    onResult(SyncResult.Error("REMOTE_NOT_FOUND"))
+                    return@launch
+                }
+                val tempFile = java.io.File(app.cacheDir, "sync_import.zip")
+                tempFile.writeBytes(zipBytes)
+                val success = DataExporter.importFromZip(app, tempFile, password)
+                tempFile.delete()
+                if (success) {
+                    onResult(SyncResult.Success)
+                } else {
+                    onResult(SyncResult.Error("导入失败"))
+                }
+            } catch (e: Exception) {
+                AppLogger.e("MainViewModel", "下载异常", e)
+                onResult(SyncResult.Error(e.message ?: "下载异常"))
+            }
         }
     }
 
@@ -219,7 +299,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     suspend fun getTransactionById(id: Long): Transaction? =
         repo.getTransactionById(id)
 
-    // 获取某年份所有记录数（用于删除确认等场景）
     fun getTransactionsByYearSnapshot(year: Int): kotlinx.coroutines.flow.Flow<List<Transaction>> =
         repo.getTransactionsByYear(year)
 }

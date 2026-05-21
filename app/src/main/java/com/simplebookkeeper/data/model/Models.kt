@@ -7,7 +7,7 @@ import androidx.room.TypeConverters
 import java.util.Date
 
 // 收支类型
-enum class TransactionType { INCOME, EXPENSE, SAVING, WITHDRAW }
+enum class TransactionType { INCOME, EXPENSE }
 
 // 付款方式
 enum class PaymentMethod {
@@ -61,6 +61,12 @@ class Converters {
 
     @TypeConverter
     fun toPaymentMethod(name: String): PaymentMethod = PaymentMethod.valueOf(name)
+
+    @TypeConverter
+    fun fromSavingType(type: SavingType): String = type.name
+
+    @TypeConverter
+    fun toSavingType(name: String): SavingType = SavingType.valueOf(name)
 }
 
 // 月度汇总（查询结果）

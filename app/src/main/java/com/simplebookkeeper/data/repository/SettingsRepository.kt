@@ -7,6 +7,8 @@ import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import com.simplebookkeeper.ui.theme.LanguageMode
+import com.simplebookkeeper.ui.theme.ThemeMode
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 
@@ -27,7 +29,10 @@ class SettingsRepository(private val context: Context) {
         private val WEBDAV_PASSWORD = stringPreferencesKey("webdav_password")
         private val WEBDAV_ENABLED = booleanPreferencesKey("webdav_enabled")
         private val CLOUD_SYNC_PROMPT_SHOWN = booleanPreferencesKey("cloud_sync_prompt_shown")
-        private val SAVINGS_BALANCE = stringPreferencesKey("savings_balance")
+        private val IS_FIRST_LAUNCH = booleanPreferencesKey("is_first_launch")
+        private val IS_PASSWORD_SETUP_DONE = booleanPreferencesKey("is_password_setup_done")
+        private val THEME_MODE = stringPreferencesKey("theme_mode")
+        private val LANGUAGE_MODE = stringPreferencesKey("language_mode")
     }
 
     val webDavConfig: Flow<WebDavConfig> = context.settingsDataStore.data.map { prefs ->
@@ -42,9 +47,21 @@ class SettingsRepository(private val context: Context) {
     val isCloudSyncPromptShown: Flow<Boolean> = context.settingsDataStore.data
         .map { it[CLOUD_SYNC_PROMPT_SHOWN] ?: false }
 
-    val savingsBalance: Flow<Long> = context.settingsDataStore.data.map { prefs ->
-        prefs[SAVINGS_BALANCE]?.toLongOrNull() ?: 0L
-    }
+    /** 是否首次启动（用于弹出密码设置对话框） */
+    val isFirstLaunch: Flow<Boolean> = context.settingsDataStore.data
+        .map { it[IS_FIRST_LAUNCH] ?: true }
+
+    /** 密码设置流程是否已完成（设置或跳过） */
+    val isPasswordSetupDone: Flow<Boolean> = context.settingsDataStore.data
+        .map { it[IS_PASSWORD_SETUP_DONE] ?: false }
+
+    /** 主题模式（默认跟随系统） */
+    val themeMode: Flow<ThemeMode> = context.settingsDataStore.data
+        .map { ThemeMode.fromName(it[THEME_MODE]) }
+
+    /** 语言模式（默认跟随系统） */
+    val languageMode: Flow<LanguageMode> = context.settingsDataStore.data
+        .map { LanguageMode.fromName(it[LANGUAGE_MODE]) }
 
     suspend fun saveWebDavConfig(config: WebDavConfig) {
         context.settingsDataStore.edit { prefs ->
@@ -67,23 +84,31 @@ class SettingsRepository(private val context: Context) {
         }
     }
 
-    // 储蓄操作
-    suspend fun addToSavings(amount: Long) {
+    /** 标记非首次启动 */
+    suspend fun markNotFirstLaunch() {
         context.settingsDataStore.edit { prefs ->
-            val current = prefs[SAVINGS_BALANCE]?.toLongOrNull() ?: 0L
-            prefs[SAVINGS_BALANCE] = (current + amount).toString()
+            prefs[IS_FIRST_LAUNCH] = false
         }
     }
 
-    suspend fun withdrawFromSavings(amount: Long): Boolean {
-        var success = false
+    /** 标记密码设置流程已完成 */
+    suspend fun markPasswordSetupDone() {
         context.settingsDataStore.edit { prefs ->
-            val current = prefs[SAVINGS_BALANCE]?.toLongOrNull() ?: 0L
-            if (current >= amount) {
-                prefs[SAVINGS_BALANCE] = (current - amount).toString()
-                success = true
-            }
+            prefs[IS_PASSWORD_SETUP_DONE] = true
         }
-        return success
+    }
+
+    /** 保存主题模式 */
+    suspend fun saveThemeMode(mode: ThemeMode) {
+        context.settingsDataStore.edit { prefs ->
+            prefs[THEME_MODE] = mode.name
+        }
+    }
+
+    /** 保存语言模式 */
+    suspend fun saveLanguageMode(mode: LanguageMode) {
+        context.settingsDataStore.edit { prefs ->
+            prefs[LANGUAGE_MODE] = mode.name
+        }
     }
 }

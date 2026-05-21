@@ -3,6 +3,7 @@ package com.simplebookkeeper
 import android.app.Application
 import androidx.work.Configuration
 import com.simplebookkeeper.data.DatabaseManager
+import com.simplebookkeeper.data.repository.SavingRepository
 import com.simplebookkeeper.data.repository.SettingsRepository
 import com.simplebookkeeper.data.repository.TransactionRepository
 import com.simplebookkeeper.security.BiometricAuth
@@ -17,7 +18,7 @@ import kotlinx.coroutines.launch
 
 class BookkeeperApp : Application(), Configuration.Provider {
 
-    /** 数据库管理器（按年拆分架构） */
+    /** 数据库管理器（单一数据库架构） */
     val dbManager by lazy { DatabaseManager(this) }
 
     /** 交易仓库 */
@@ -25,10 +26,17 @@ class BookkeeperApp : Application(), Configuration.Provider {
         TransactionRepository(dbManager)
     }
 
+    /** 储蓄仓库 */
+    val savingRepository by lazy {
+        SavingRepository(dbManager.savingDao)
+    }
+
     /** 设置仓库 */
     val settingsRepository by lazy { SettingsRepository(this) }
 
+    /** 应用锁密码管理器（同时用于 ZIP 加密） */
     val passwordManager by lazy { PasswordManager(this) }
+
     val biometricAuth by lazy { BiometricAuth(this) }
     val webDavManager by lazy { WebDavManager(this) }
 
@@ -36,7 +44,7 @@ class BookkeeperApp : Application(), Configuration.Provider {
         super.onCreate()
         AppLogger.init(this)
 
-        // 初始化数据库（迁移检查 + 确保当年份 DB 存在）
+        // 初始化数据库（迁移检查 + 验证）
         kotlinx.coroutines.runBlocking(Dispatchers.IO) {
             dbManager.initialize()
         }

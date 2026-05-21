@@ -11,14 +11,16 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.fragment.app.FragmentActivity
 import com.simplebookkeeper.BookkeeperApp
+import com.simplebookkeeper.R
+import com.simplebookkeeper.util.AppLogger
 import kotlinx.coroutines.launch
 
 @Composable
@@ -28,30 +30,36 @@ fun LockScreen(
     val context = LocalContext.current
     val app = context.applicationContext as BookkeeperApp
     val scope = rememberCoroutineScope()
+    val activity = context as FragmentActivity
 
     val isBiometricEnabled by app.passwordManager.isBiometricEnabled.collectAsState(initial = false)
     val canUseBiometric = app.biometricAuth.canAuthenticate()
 
     var password by remember { mutableStateOf("") }
     var errorMessage by remember { mutableStateOf("") }
-    var showBiometric by remember { mutableStateOf(false) }
+
+    // 防重入：确保自动触发的 authenticate() 只被调用一次
+    var biometricLaunched by remember { mutableStateOf(false) }
 
     // 自动触发生物识别
-    LaunchedEffect(Unit) {
-        if (isBiometricEnabled && canUseBiometric) {
-            showBiometric = true
-        }
-    }
-
-    if (showBiometric) {
-        LaunchedEffect(Unit) {
+    // 使用 isBiometricEnabled 作为 key 确保 DataStore 真实值到来后才触发
+    // BiometricAuth.authenticate() 内部会处理 Activity 生命周期等待
+    LaunchedEffect(isBiometricEnabled) {
+        if (isBiometricEnabled && canUseBiometric && !biometricLaunched) {
+            biometricLaunched = true
+            AppLogger.i("LockScreen", "自动触发生物识别")
             app.biometricAuth.authenticate(
-                activity = context as FragmentActivity,
-                onSuccess = { onUnlocked() },
-                onFailed = { showBiometric = false },
+                activity = activity,
+                onSuccess = {
+                    AppLogger.i("LockScreen", "生物识别成功，解锁")
+                    onUnlocked()
+                },
+                onFailed = {
+                    AppLogger.i("LockScreen", "生物识别失败")
+                    // 允许用户通过按钮手动重试
+                },
                 onError = { code ->
-                    showBiometric = false
-                    if (code != "USE_PASSWORD") errorMessage = code
+                    AppLogger.i("LockScreen", "生物识别错误: $code")
                 }
             )
         }
@@ -75,13 +83,13 @@ fun LockScreen(
             Spacer(modifier = Modifier.height(16.dp))
 
             Text(
-                "简单记账",
+                stringResource(R.string.app_name),
                 fontSize = 24.sp,
                 fontWeight = FontWeight.Bold
             )
 
             Text(
-                "请输入密码解锁",
+                stringResource(R.string.enter_password),
                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
                 modifier = Modifier.padding(top = 4.dp, bottom = 24.dp)
             )
@@ -92,7 +100,7 @@ fun LockScreen(
                     password = it
                     errorMessage = ""
                 },
-                label = { Text("密码") },
+                label = { Text(stringResource(R.string.password_hint)) },
                 visualTransformation = PasswordVisualTransformation(),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                 singleLine = true,
@@ -111,7 +119,7 @@ fun LockScreen(
                         val ok = app.passwordManager.verifyPassword(password)
                         if (ok) onUnlocked()
                         else {
-                            errorMessage = "密码错误，请重试"
+                            errorMessage = context.getString(R.string.wrong_password)
                             password = ""
                         }
                     }
@@ -122,18 +130,33 @@ fun LockScreen(
                 shape = RoundedCornerShape(12.dp),
                 enabled = password.isNotEmpty()
             ) {
-                Text("解锁", fontSize = 16.sp)
+                Text(stringResource(R.string.unlock), fontSize = 16.sp)
             }
 
             if (isBiometricEnabled && canUseBiometric) {
                 Spacer(modifier = Modifier.height(16.dp))
                 OutlinedButton(
-                    onClick = { showBiometric = true },
+                    onClick = {
+                        AppLogger.i("LockScreen", "手动触发生物识别")
+                        app.biometricAuth.authenticate(
+                            activity = activity,
+                            onSuccess = {
+                                AppLogger.i("LockScreen", "生物识别成功（手动），解锁")
+                                onUnlocked()
+                            },
+                            onFailed = {
+                                AppLogger.i("LockScreen", "生物识别失败（手动）")
+                            },
+                            onError = { code ->
+                                AppLogger.i("LockScreen", "生物识别错误（手动）: $code")
+                            }
+                        )
+                    },
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Icon(Icons.Default.Fingerprint, contentDescription = null)
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("使用生物识别")
+                    Text(stringResource(R.string.use_biometric))
                 }
             }
         }

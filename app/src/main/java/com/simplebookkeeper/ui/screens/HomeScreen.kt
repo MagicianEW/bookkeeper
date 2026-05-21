@@ -12,9 +12,11 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.simplebookkeeper.R
 import com.simplebookkeeper.ui.components.SummaryCard
 import com.simplebookkeeper.ui.components.TransactionItem
 import com.simplebookkeeper.viewmodel.MainViewModel
@@ -37,57 +39,53 @@ fun HomeScreen(
     var showDeleteDialog by remember { mutableStateOf<Long?>(null) }
     var isRefreshing by remember { mutableStateOf(false) }
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text("简单记账", fontWeight = FontWeight.Bold) },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.primary,
-                    titleContentColor = MaterialTheme.colorScheme.onPrimary
-                ),
-                actions = {
-                    IconButton(
-                        onClick = {
-                            isRefreshing = true
-                            // 重新设置当前月份以触发数据刷新
-                            val currentYear = Calendar.getInstance().get(Calendar.YEAR)
-                            val currentMonth = Calendar.getInstance().get(Calendar.MONTH) + 1
-                            viewModel.setDisplayMonth(currentYear, currentMonth)
-                            isRefreshing = false
-                        }
-                    ) {
-                        if (isRefreshing) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(20.dp),
-                                color = MaterialTheme.colorScheme.onPrimary,
-                                strokeWidth = 2.dp
-                            )
-                        } else {
-                            Icon(
-                                Icons.Default.Refresh,
-                                contentDescription = "刷新",
-                                tint = MaterialTheme.colorScheme.onPrimary
-                            )
-                        }
+    Box(modifier = Modifier.fillMaxSize()) {
+        Column(modifier = Modifier.fillMaxSize()) {
+            // 顶栏（与搜索/统计/设置页风格统一）
+        Surface(
+            color = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = 16.dp, end = 8.dp, top = 8.dp, bottom = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    stringResource(R.string.book_title),
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onPrimary,
+                    modifier = Modifier.weight(1f)
+                )
+                IconButton(
+                    onClick = {
+                        isRefreshing = true
+                        val currentYear = Calendar.getInstance().get(Calendar.YEAR)
+                        val currentMonth = Calendar.getInstance().get(Calendar.MONTH) + 1
+                        viewModel.setDisplayMonth(currentYear, currentMonth)
+                        isRefreshing = false
+                    }
+                ) {
+                    if (isRefreshing) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(20.dp),
+                            color = MaterialTheme.colorScheme.onPrimary,
+                            strokeWidth = 2.dp
+                        )
+                    } else {
+                        Icon(
+                            Icons.Default.Refresh,
+                            contentDescription = stringResource(R.string.refresh),
+                            tint = MaterialTheme.colorScheme.onPrimary
+                        )
                     }
                 }
-            )
-        },
-        floatingActionButton = {
-            FloatingActionButton(
-                onClick = onAddTransaction,
-                containerColor = MaterialTheme.colorScheme.primary
-            ) {
-                Icon(Icons.Default.Add, contentDescription = "记账", tint = MaterialTheme.colorScheme.onPrimary)
             }
         }
-    ) { padding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-        ) {
-            // 月份切换
+
+        // 月份切换
             MonthSelector(
                 year = displayYear,
                 month = displayMonth,
@@ -115,7 +113,7 @@ fun HomeScreen(
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        text = "本月暂无记录\n点击右下角 + 开始记账",
+                        text = stringResource(R.string.no_records),
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
                         textAlign = androidx.compose.ui.text.style.TextAlign.Center
                     )
@@ -139,6 +137,17 @@ fun HomeScreen(
                 }
             }
         }
+
+        // 悬浮记账按钮
+        FloatingActionButton(
+            onClick = onAddTransaction,
+            containerColor = MaterialTheme.colorScheme.primary,
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(16.dp)
+        ) {
+            Icon(Icons.Default.Add, contentDescription = stringResource(R.string.add_record), tint = MaterialTheme.colorScheme.onPrimary)
+        }
     }
 
     // 删除确认对话框
@@ -146,16 +155,16 @@ fun HomeScreen(
         val transaction = monthlyTransactions.find { it.id == id }
         AlertDialog(
             onDismissRequest = { showDeleteDialog = null },
-            title = { Text("删除记录") },
-            text = { Text("确定要删除这条记录吗？") },
+            title = { Text(stringResource(R.string.delete_record)) },
+            text = { Text(stringResource(R.string.delete_record_confirm)) },
             confirmButton = {
                 TextButton(onClick = {
                     transaction?.let { viewModel.deleteTransaction(it) }
                     showDeleteDialog = null
-                }) { Text("删除", color = MaterialTheme.colorScheme.error) }
+                }) { Text(stringResource(R.string.delete), color = MaterialTheme.colorScheme.error) }
             },
             dismissButton = {
-                TextButton(onClick = { showDeleteDialog = null }) { Text("取消") }
+                TextButton(onClick = { showDeleteDialog = null }) { Text(stringResource(R.string.cancel)) }
             }
         )
     }
@@ -179,7 +188,7 @@ fun MonthSelector(
             Icon(Icons.Default.KeyboardArrowLeft, contentDescription = "上月")
         }
         Text(
-            text = "${year}年${month}月",
+            text = stringResource(R.string.month_format, year, month),
             fontWeight = FontWeight.Bold,
             fontSize = 18.sp,
             modifier = Modifier.padding(horizontal = 24.dp)

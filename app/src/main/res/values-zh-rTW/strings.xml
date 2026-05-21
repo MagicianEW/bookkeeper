@@ -1,0 +1,224 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">簡單記帳</string>
+
+    <!-- 底部導航 -->
+    <string name="nav_book">帳本</string>
+    <string name="nav_search">搜尋</string>
+    <string name="nav_statistics">統計</string>
+    <string name="nav_savings">儲蓄</string>
+    <string name="nav_settings">設定</string>
+
+    <!-- 通用 -->
+    <string name="delete">刪除</string>
+    <string name="cancel">取消</string>
+    <string name="confirm">確定</string>
+    <string name="save">儲存</string>
+    <string name="income">收入</string>
+    <string name="expense">支出</string>
+    <string name="balance">結餘</string>
+    <string name="all">全部</string>
+    <string name="category">分類</string>
+    <string name="note">備註</string>
+    <string name="date">日期</string>
+    <string name="amount">金額</string>
+
+    <!-- 帳本頁 -->
+    <string name="book_title">帳本</string>
+    <string name="refresh">重新整理</string>
+    <string name="add_record">記帳</string>
+    <string name="no_records">本月暫無記錄\n點擊右下角 + 開始記帳</string>
+    <string name="delete_record">刪除記錄</string>
+    <string name="delete_record_confirm">確定要刪除這條記錄嗎？</string>
+    <string name="month_format">%1$d年%2$d月</string>
+
+    <!-- 搜尋頁 -->
+    <string name="search_title">搜尋</string>
+    <string name="search_hint">搜尋關鍵詞</string>
+    <string name="amount_range">金額範圍</string>
+    <string name="date_range">日期範圍</string>
+    <string name="search_button">搜尋</string>
+    <string name="no_results">未找到符合條件的記錄</string>
+    <string name="result_count">共 %1$d 條記錄</string>
+    <string name="min_amount">最小金額</string>
+    <string name="max_amount">最大金額</string>
+    <string name="start_date">開始日期</string>
+    <string name="end_date">結束日期</string>
+
+    <!-- 統計頁 -->
+    <string name="statistics_title">統計</string>
+    <string name="year_format">%1$d年</string>
+    <string name="year_summary">%1$d年彙總</string>
+    <string name="yearly_income">年收入</string>
+    <string name="yearly_expense">年支出</string>
+    <string name="yearly_balance">年結餘</string>
+    <string name="detail_list">明細列表</string>
+
+    <!-- 儲蓄頁 -->
+    <string name="savings_title">儲蓄</string>
+    <string name="savings_balance">儲蓄餘額</string>
+    <string name="deposit">存入</string>
+    <string name="withdraw">取出</string>
+    <string name="add_saving">添加儲蓄記錄</string>
+    <string name="no_savings">暫無儲蓄記錄</string>
+    <string name="add_first_saving">點擊右下角按鈕添加第一條記錄</string>
+    <string name="delete_saving_confirm">確定要刪除這條%1$s記錄嗎？</string>
+    <string name="insufficient_balance">餘額不足</string>
+    <string name="saving_type">類型</string>
+    <string name="saving_note">備註（可選）</string>
+    <string name="invalid_amount">請輸入有效金額</string>
+
+    <!-- 記錄編輯頁 -->
+    <string name="add_record_title">記帳</string>
+    <string name="edit_record_title">編輯記錄</string>
+    <string name="payment_method">付款方式</string>
+    <string name="delete_record_title">刪除記錄</string>
+    <string name="date_format">yyyy年MM月dd日</string>
+
+    <!-- 設定頁 -->
+    <string name="settings_title">設定</string>
+    <string name="appearance">外觀</string>
+    <string name="theme_mode">主題模式</string>
+    <string name="language">語言</string>
+    <string name="light_theme">淺色</string>
+    <string name="dark_theme">深色</string>
+    <string name="follow_system">跟隨系統</string>
+    <string name="security">安全</string>
+    <string name="set_password">設定密碼</string>
+    <string name="change_password">修改密碼</string>
+    <string name="password_set">已設定密碼保護</string>
+    <string name="password_not_set">設定後下次啟動需要驗證</string>
+    <string name="biometric">生物識別</string>
+    <string name="biometric_enabled">已啟用生物識別解鎖</string>
+    <string name="biometric_disabled">啟用後可用指紋/面容解鎖</string>
+    <string name="data_management">資料管理</string>
+    <string name="export_csv">匯出為CSV壓縮包</string>
+    <string name="export_csv_subtitle">將資料匯出為 CSV 格式並壓縮為 ZIP</string>
+    <string name="import_csv">從CSV壓縮包恢復</string>
+    <string name="import_csv_subtitle">從 ZIP 壓縮包匯入 CSV 資料</string>
+    <string name="sync_now">立即同步</string>
+    <string name="syncing">同步中…</string>
+    <string name="sync_subtitle">將本地資料同步到雲端</string>
+    <string name="syncing_subtitle">正在同步資料，請稍候</string>
+    <string name="webdav_sync">WebDAV 同步</string>
+    <string name="configure_webdav">設定 WebDAV 伺服器</string>
+    <string name="webdav_address">WebDAV 位址</string>
+    <string name="webdav_username">使用者名稱</string>
+    <string name="webdav_password">密碼</string>
+    <string name="enable_sync">啟用同步</string>
+    <string name="test_connection">測試連線</string>
+    <string name="save_config">儲存設定</string>
+    <string name="category_management">分類管理</string>
+    <string name="add_category">添加分類</string>
+    <string name="category_name">分類名稱</string>
+    <string name="category_type">類型</string>
+    <string name="about">關於</string>
+    <string name="about_features">收支記錄 · 統計分析 · 儲蓄管理 · 雲端同步</string>
+    <string name="about_storage">單一資料庫 · Room · SQLCipher 加密</string>
+    <string name="about_sync">WebDAV · CSV + AES-256 加密</string>
+    <string name="about_developer">開發者</string>
+    <string name="about_data_storage">資料儲存</string>
+    <string name="about_cloud_sync">雲端同步</string>
+    <string name="about_features_label">功能</string>
+    <string name="export_log">匯出日誌</string>
+    <string name="not_configured">未設定</string>
+    <string name="configured">已設定</string>
+    <string name="please_configure_webdav">請先設定並啟用 WebDAV</string>
+    <string name="import_success">✅ 匯入成功，請重啟應用以完成資料遷移</string>
+    <string name="import_failed">❌ 匯入失敗，檔案格式不正確</string>
+    <string name="new_password">新密碼（至少4位）</string>
+    <string name="password_min_length">密碼至少4位</string>
+    <string name="confirm_password">確認密碼</string>
+    <string name="password_mismatch">兩次密碼不一致</string>
+    <string name="enter_password_to_disable_biometric">請輸入密碼以關閉生物識別</string>
+    <string name="webdav_not_configured">未設定</string>
+
+    <!-- 密碼設定 -->
+    <string name="set_password_title">設定密碼</string>
+    <string name="password_hint">密碼（至少4位）</string>
+    <string name="show_password">顯示密碼</string>
+    <string name="skip_password_title">跳過密碼設定？</string>
+    <string name="skip_password_warning">無法從雲端恢復加密的資料</string>
+    <string name="confirm_skip">確認跳過</string>
+    <string name="skip">跳過</string>
+
+    <!-- 鎖屏 -->
+    <string name="unlock">解鎖</string>
+    <string name="enter_password">請輸入密碼</string>
+    <string name="wrong_password">密碼錯誤</string>
+    <string name="use_biometric">使用生物識別</string>
+
+    <!-- 雲端恢復 -->
+    <string name="cloud_restore_title">從雲端恢復</string>
+    <string name="cloud_restore_message">偵測到這是首次啟動。\n如果您之前在其他裝置上使用過簡單記帳，可以立即從雲端恢復資料。\n\n是否從雲端恢復？</string>
+    <string name="input_webdav">輸入 WebDAV 設定</string>
+    <string name="restore_success">恢復成功</string>
+    <string name="restore_failed">恢復失敗</string>
+    <string name="restore_success_message">資料恢復成功！\n請重啟應用以載入恢復的資料。</string>
+    <string name="connection_failed">連線失敗：%1$s</string>
+    <string name="show">顯示</string>
+    <string name="hide">隱藏</string>
+    <string name="unable_restore_encrypted">無法從雲端恢復加密的資料</string>
+
+    <!-- 主題/語言模式 -->
+    <string name="lang_follow_system">跟隨系統</string>
+    <string name="lang_simplified_chinese">简体中文</string>
+    <string name="lang_traditional_chinese">繁體中文</string>
+    <string name="lang_english">English</string>
+
+    <!-- 付款方式 -->
+    <string name="cash">現金</string>
+    <string name="card">銀行卡</string>
+    <string name="alipay">支付寶</string>
+    <string name="wechat">微信</string>
+    <string name="other">其他</string>
+
+    <!-- 記錄編輯頁（補充） -->
+    <string name="back">返回</string>
+    <string name="add_category_icon">添加分類</string>
+    <string name="note_optional">備註（可選）</string>
+    <string name="delete_record_irreversible">確定要刪除這條記錄嗎？此操作不可恢復。</string>
+
+    <!-- 雲端恢復（補充） -->
+    <string name="cloud_restore_question">從雲端恢復資料？</string>
+    <string name="processing">正在處理…</string>
+    <string name="input_decrypt_password">輸入解密密碼</string>
+    <string name="cloud_data_encrypted">雲端資料已加密，需要輸入密碼才能恢復。</string>
+    <string name="decrypt_password">解密密碼</string>
+    <string name="yes_restore">是，從雲端恢復</string>
+    <string name="no_start_fresh">否，直接進入</string>
+    <string name="start_restore">開始恢復</string>
+    <string name="decrypt_and_restore">解密並恢復</string>
+    <string name="downloading_data">正在從雲端下載資料，請稍候…</string>
+    <string name="no_cloud_data">雲端暫無資料檔案</string>
+    <string name="import_failed_format">匯入失敗，資料格式可能不正確。</string>
+    <string name="decrypt_failed">解密失敗，密碼不匹配。</string>
+    <string name="temp_file_missing">臨時檔案不存在，請重試。</string>
+    <string name="back_action">返回</string>
+    <string name="skip_action">跳過</string>
+
+    <!-- 設定頁（補充） -->
+    <string name="close_password_protection">關閉密碼保護</string>
+    <string name="close_password_warning">關閉後無法同步/恢復已加密的資料，確定要關閉嗎？</string>
+    <string name="close_password">關閉密碼</string>
+    <string name="cannot_sync_encrypted">無法同步/恢復已加密的資料</string>
+    <string name="verify_password_title">驗證密碼</string>
+    <string name="password_error">密碼錯誤</string>
+    <string name="password_set_success">密碼已設定</string>
+    <string name="export_success">✅ 匯出成功</string>
+    <string name="export_failed">❌ 匯出失敗</string>
+    <string name="connection_success">連線成功！</string>
+    <string name="connection_failed_message">連線失敗: %1$s</string>
+    <string name="config_saved">設定已儲存</string>
+    <string name="log_export_success">日誌匯出成功</string>
+    <string name="add_custom_category">添加自訂分類</string>
+    <string name="add_custom_category_subtitle">新增收入或支出分類</string>
+    <string name="export_log_subtitle">將執行日誌匯出為文字檔案供分析</string>
+    <string name="configure_webdav_subtitle">設定伺服器位址和帳號</string>
+    <string name="sync_complete">同步完成</string>
+    <string name="close">關閉</string>
+    <string name="about_privacy">資料完全儲存在本地，保護您的隱私安全。</string>
+    <string name="configured_prefix">已設定: %1$s</string>
+    <string name="webdav_address_placeholder">https://your-server/dav</string>
+    <string name="add_button">添加</string>
+</resources>

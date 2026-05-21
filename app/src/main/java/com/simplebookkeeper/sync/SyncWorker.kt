@@ -2,10 +2,11 @@ package com.simplebookkeeper.sync
 
 import android.content.Context
 import com.simplebookkeeper.BookkeeperApp
-import com.simplebookkeeper.data.DatabaseManager
+import com.simplebookkeeper.data.DataExporter
 import com.simplebookkeeper.data.repository.SettingsRepository
 import com.simplebookkeeper.util.AppLogger
 import kotlinx.coroutines.flow.first
+import java.io.File
 import java.util.concurrent.TimeUnit
 
 class SyncWorker(
@@ -20,42 +21,36 @@ class SyncWorker(
         if (!config.enabled || config.url.isBlank()) return Result.success()
 
         val app = applicationContext as? BookkeeperApp ?: return Result.retry()
-        val dbManager = app.dbManager
         val webDavManager = app.webDavManager
 
-        AppLogger.i(TAG, "doWork: 多文件同步")
+        AppLogger.i(TAG, "doWork: 开始同步")
 
-        // 检查云端是否有数据（通过检查远程文件列表）
-        val remoteFiles = webDavManager.getRemoteFileList(config)
-        val hasRemoteData = remoteFiles.any { it.endsWith(".db") }
-        val hasLocalData = dbManager.getAllYears().isNotEmpty() || dbManager.metaDbFile.exists()
+        return try {
+            // 上传：导出 ZIP → 上传
+            val tempFile = File(applicationContext.cacheDir, "sync_export.zip")
+            // 从安全存储取出明文密码（未设置密码时为 null，则导出不加密）
+            val password: String? = app.passwordManager.getPlainPassword()
 
-        when {
-            // 云端有数据，本地无数据 → 下载
-            hasRemoteData && !hasLocalData -> {
-                AppLogger.i(TAG, "doWork: 云端有数据，本地无数据，下载")
-                return when (val result = webDavManager.downloadMulti(config, dbManager)) {
-                    is SyncResult.Success -> Result.success()
-                    is SyncResult.SizeMismatch -> Result.success()
-                    is SyncResult.Error -> Result.retry()
-                    is SyncResult.Conflict -> Result.success()
-                    is SyncResult.MultiConflict -> Result.success()
-                    is SyncResult.SelectBackup -> Result.success()
-                    else -> Result.success()
+            val exportSuccess = DataExporter.exportToZip(applicationContext, tempFile, password)
+            if (exportSuccess) {
+                val zipBytes = tempFile.readBytes()
+                val uploadSuccess = webDavManager.uploadData(zipBytes, config)
+                tempFile.delete()
+                if (uploadSuccess) {
+                    AppLogger.i(TAG, "doWork: 同步成功")
+                    Result.success()
+                } else {
+                    AppLogger.e(TAG, "doWork: 上传失败")
+                    Result.retry()
                 }
+            } else {
+                tempFile.delete()
+                AppLogger.e(TAG, "doWork: 导出失败")
+                Result.retry()
             }
-            // 本地有数据 → 上传同步
-            hasLocalData -> {
-                return when (val result = webDavManager.syncMulti(config, dbManager)) {
-                    is SyncResult.Success -> Result.success()
-                    is SyncResult.SizeMismatch -> Result.success()  // 后台同步不阻塞，等待用户下次手动确认
-                    is SyncResult.Error -> Result.retry()
-                    is SyncResult.Conflict -> Result.success()
-                    is SyncResult.MultiConflict -> Result.success()
-                    else -> Result.success()
-                }
-            }
-            else -> return Result.success()
+        } catch (e: Exception) {
+            AppLogger.e(TAG, "doWork 异常", e)
+            Result.retry()
         }
     }
 

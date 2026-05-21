@@ -8,6 +8,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.fragment.app.FragmentActivity
 import androidx.navigation.NavDestination.Companion.hierarchy
@@ -16,17 +17,19 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import com.simplebookkeeper.R
 import com.simplebookkeeper.ui.screens.*
 import com.simplebookkeeper.viewmodel.MainViewModel
 
-sealed class Screen(val route: String, val label: String, val icon: ImageVector, val iconSelected: ImageVector) {
-    object Home : Screen("home", "账本", Icons.Outlined.Book, Icons.Filled.Book)
-    object Search : Screen("search", "搜索", Icons.Outlined.Search, Icons.Filled.Search)
-    object Statistics : Screen("statistics", "统计", Icons.Outlined.BarChart, Icons.Filled.BarChart)
-    object Settings : Screen("settings", "设置", Icons.Outlined.Settings, Icons.Filled.Settings)
+sealed class Screen(val route: String, val labelRes: Int, val icon: ImageVector, val iconSelected: ImageVector) {
+    object Home : Screen("home", R.string.nav_book, Icons.Outlined.Book, Icons.Filled.Book)
+    object Search : Screen("search", R.string.nav_search, Icons.Outlined.Search, Icons.Filled.Search)
+    object Statistics : Screen("statistics", R.string.nav_statistics, Icons.Outlined.BarChart, Icons.Filled.BarChart)
+    object Savings : Screen("savings", R.string.nav_savings, Icons.Outlined.Savings, Icons.Filled.Savings)
+    object Settings : Screen("settings", R.string.nav_settings, Icons.Outlined.Settings, Icons.Filled.Settings)
 }
 
-val bottomNavItems = listOf(Screen.Home, Screen.Search, Screen.Statistics, Screen.Settings)
+val bottomNavItems = listOf(Screen.Home, Screen.Search, Screen.Statistics, Screen.Savings, Screen.Settings)
 
 @Composable
 fun AppNavigation(
@@ -59,8 +62,8 @@ fun PhoneLayout(
                 bottomNavItems.forEach { screen ->
                     val selected = currentDestination?.hierarchy?.any { it.route == screen.route } == true
                     NavigationBarItem(
-                        icon = { Icon(if (selected) screen.iconSelected else screen.icon, contentDescription = screen.label) },
-                        label = { Text(screen.label) },
+                        icon = { Icon(if (selected) screen.iconSelected else screen.icon, contentDescription = stringResource(screen.labelRes)) },
+                        label = { Text(stringResource(screen.labelRes)) },
                         selected = selected,
                         onClick = {
                             navController.navigate(screen.route) {
@@ -100,8 +103,8 @@ fun TabletLayout(
             bottomNavItems.forEach { screen ->
                 val selected = currentDestination?.hierarchy?.any { it.route == screen.route } == true
                 NavigationRailItem(
-                    icon = { Icon(if (selected) screen.iconSelected else screen.icon, contentDescription = screen.label) },
-                    label = { Text(screen.label) },
+                    icon = { Icon(if (selected) screen.iconSelected else screen.icon, contentDescription = stringResource(screen.labelRes)) },
+                    label = { Text(stringResource(screen.labelRes)) },
                     selected = selected,
                     onClick = {
                         navController.navigate(screen.route) {
@@ -152,6 +155,9 @@ fun MainNavHost(
                 viewModel = viewModel,
                 onTransactionClick = { id -> navController.navigate("edit_transaction/$id") }
             )
+        }
+        composable(Screen.Savings.route) {
+            SavingsScreen(viewModel = viewModel)
         }
         composable(Screen.Settings.route) {
             SettingsScreen(viewModel = viewModel)
