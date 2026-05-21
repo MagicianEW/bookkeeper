@@ -7,6 +7,7 @@ import androidx.core.content.ContextCompat
 import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import com.simplebookkeeper.R
 import com.simplebookkeeper.util.AppLogger
 
 class BiometricAuth(private val context: Context) {
@@ -135,9 +136,9 @@ class BiometricAuth(private val context: Context) {
         val executor = ContextCompat.getMainExecutor(context)
 
         val promptInfo = BiometricPrompt.PromptInfo.Builder()
-            .setTitle("生物识别验证")
-            .setSubtitle("请验证您的身份以进入简单记账")
-            .setNegativeButtonText("使用密码")
+            .setTitle(context.getString(R.string.biometric_prompt_title))
+            .setSubtitle(context.getString(R.string.biometric_prompt_subtitle))
+            .setNegativeButtonText(context.getString(R.string.biometric_use_password))
             .build()
 
         val biometricPrompt = BiometricPrompt(

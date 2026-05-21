@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">Simple Bookkeeper</string>
+    <string name="app_name">Book Keeper</string>
 
     <!-- Bottom Navigation -->
     <string name="nav_book">Book</string>
@@ -150,7 +150,7 @@
 
     <!-- Cloud Restore -->
     <string name="cloud_restore_title">Restore from Cloud</string>
-    <string name="cloud_restore_message">First launch detected.\nIf you\'ve used Simple Bookkeeper on another device, you can restore your data now.\n\nRestore from cloud?</string>
+    <string name="cloud_restore_message">First launch detected.\nIf you\'ve used Book Keeper on another device, you can restore your data now.\n\nRestore from cloud?</string>
     <string name="input_webdav">Enter WebDAV Configuration</string>
     <string name="restore_success">Restore Successful</string>
     <string name="restore_failed">Restore Failed</string>
@@ -221,4 +221,19 @@
     <string name="configured_prefix">Configured: %1$s</string>
     <string name="webdav_address_placeholder">https://your-server/dav</string>
     <string name="add_button">Add</string>
+
+    <!-- Biometric -->
+    <string name="biometric_prompt_title">Biometric Verification</string>
+    <string name="biometric_prompt_subtitle">Verify your identity to access Book Keeper</string>
+    <string name="biometric_use_password">Use password</string>
+
+    <!-- Common (supplement) -->
+    <string name="unknown_category">Unknown category</string>
+
+    <!-- Sync Status -->
+    <string name="sync_upload_failed">Upload failed</string>
+    <string name="sync_export_failed">Export failed</string>
+    <string name="sync_error">Sync error</string>
+    <string name="sync_import_failed">Import failed</string>
+    <string name="sync_download_failed">Download failed</string>
 </resources>

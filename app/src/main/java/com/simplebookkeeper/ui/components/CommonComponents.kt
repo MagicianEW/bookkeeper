@@ -73,7 +73,7 @@ fun TransactionItem(
 
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = category?.name ?: "未知分类",
+                    text = category?.name ?: stringResource(R.string.unknown_category),
                     style = MaterialTheme.typography.bodyLarge,
                     fontWeight = FontWeight.Medium
                 )

@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.simplebookkeeper.BookkeeperApp
+import com.simplebookkeeper.R
 import com.simplebookkeeper.data.DataExporter
 import com.simplebookkeeper.data.model.Category
 import com.simplebookkeeper.data.model.Saving
@@ -249,15 +250,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     if (uploadSuccess) {
                         onResult(SyncResult.Success)
                     } else {
-                        onResult(SyncResult.Error("上传失败"))
+                        onResult(SyncResult.Error(app.getString(R.string.sync_upload_failed)))
                     }
                 } else {
                     tempFile.delete()
-                    onResult(SyncResult.Error("导出失败"))
+                    onResult(SyncResult.Error(app.getString(R.string.sync_export_failed)))
                 }
             } catch (e: Exception) {
                 AppLogger.e("MainViewModel", "同步异常", e)
-                onResult(SyncResult.Error(e.message ?: "同步异常"))
+                onResult(SyncResult.Error(e.message ?: app.getString(R.string.sync_error)))
             }
         }
     }
@@ -278,11 +279,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 if (success) {
                     onResult(SyncResult.Success)
                 } else {
-                    onResult(SyncResult.Error("导入失败"))
+                    onResult(SyncResult.Error(app.getString(R.string.sync_import_failed)))
                 }
             } catch (e: Exception) {
                 AppLogger.e("MainViewModel", "下载异常", e)
-                onResult(SyncResult.Error(e.message ?: "下载异常"))
+                onResult(SyncResult.Error(e.message ?: app.getString(R.string.sync_download_failed)))
             }
         }
     }
