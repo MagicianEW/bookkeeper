@@ -112,9 +112,10 @@ fun SettingsScreen(
         uri?.let {
             scope.launch {
                 val tempFile = File(context.cacheDir, "bookkeeper_export.zip")
-                // 如果设置了密码，需要让用户输入密码用于加密
-                // 此处暂用 null（导出时不加密），后续可通过对话框输入密码
-                val password: String? = null
+                // 自动使用应用锁密码：有密码则加密，无密码则普通 ZIP
+                val password: String? = if (app.passwordManager.isPasswordEnabled.first()) {
+                    app.passwordManager.getPlainPassword()
+                } else null
                 val success = DataExporter.exportToZip(context, tempFile, password)
                 if (success) {
                     context.contentResolver.openOutputStream(uri)?.use { out ->
@@ -147,7 +148,11 @@ fun SettingsScreen(
     ) { uri ->
         uri?.let {
             scope.launch {
-                val success = importData(context, it)
+                // 自动使用应用锁密码解密（导入的文件可能是加密的）
+                val password: String? = if (app.passwordManager.isPasswordEnabled.first()) {
+                    app.passwordManager.getPlainPassword()
+                } else null
+                val success = importData(context, it, password)
                 syncMessage = if (success) importSuccessText else importFailedText
             }
         }
@@ -778,16 +783,13 @@ fun AddCategoryDialog(onConfirm: (Category) -> Unit, onDismiss: () -> Unit) {
 
 // ——— 数据导入导出 ———
 
-suspend fun importData(context: Context, uri: Uri): Boolean {
+suspend fun importData(context: Context, uri: Uri, password: String? = null): Boolean {
     return try {
-        val tempFile = File(context.cacheDir, "import_temp")
+        val tempFile = File(context.cacheDir, "import_temp.zip")
         context.contentResolver.openInputStream(uri)?.use { input ->
             tempFile.outputStream().use { input.copyTo(it) }
         }
-
-        val app = context.applicationContext as? com.simplebookkeeper.BookkeeperApp
-        // 导入时暂不传密码，后续可通过对话框输入
-        val success = DataExporter.importFromZip(context, tempFile, null)
+        val success = DataExporter.importFromZip(context, tempFile, password)
         tempFile.delete()
         success
     } catch (e: Exception) {
