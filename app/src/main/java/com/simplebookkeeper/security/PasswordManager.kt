@@ -91,39 +91,66 @@ class PasswordManager(private val context: Context) {
     val isFirstLaunch: Flow<Boolean> = context.dataStore.data
         .map { it[KEY_FIRST_LAUNCH] ?: true }
 
-    // 设置密码
+    // 设置密码（使用 PBKDF2 + 随机盐）
     suspend fun setPassword(password: String) {
-        val hash = hashPasswordSha256(password)
+        val salt = generateSalt()
+        val (_, hash) = hashPasswordPbkdf2(password, salt)
+        // 存储格式: salt:hash（salt 和 hash 都是 hex 编码）
+        val storedValue = "${bytesToHex(salt)}:$hash"
         context.dataStore.edit { prefs ->
-            prefs[KEY_PASSWORD_HASH] = hash
+            prefs[KEY_PASSWORD_HASH] = storedValue
             prefs[KEY_PASSWORD_ENABLED] = true
         }
         savePlainPassword(password)
-        AppLogger.i(TAG, "密码已设置")
+        AppLogger.i(TAG, "密码已设置（PBKDF2）")
     }
 
-    // 验证密码
+    // 验证密码（兼容旧版 SHA-256，自动升级）
     suspend fun verifyPassword(password: String): Boolean {
         val stored = context.dataStore.data.map { it[KEY_PASSWORD_HASH] ?: "" }.first()
         if (stored.isEmpty()) {
             AppLogger.w(TAG, "验证失败: 无存储的密码哈希")
             return false
         }
-        // PBKDF2 格式: salt:hash（兼容旧版 0.3.7 beta 设置的密码）
+        // PBKDF2 格式: salt:hash（当前默认格式）
         if (stored.contains(":")) {
             val parts = stored.split(":", limit = 2)
             if (parts.size == 2) {
                 return try {
-                    val (_, computedHash) = hashPasswordPbkdf2(password, hexToBytes(parts[0]))
-                    computedHash == parts[1]
+                    val (computedSalt, computedHash) = hashPasswordPbkdf2(password, hexToBytes(parts[0]))
+                    val matched = computedHash == parts[1]
+                    if (matched) {
+                        AppLogger.i(TAG, "PBKDF2 验证成功")
+                    }
+                    matched
                 } catch (e: Exception) {
                     AppLogger.e(TAG, "PBKDF2 验证异常", e)
                     false
                 }
             }
         }
-        // SHA-256 格式（当前默认 + 旧版兼容）
-        return stored == hashPasswordSha256(password)
+        // SHA-256 格式（旧版本兼容）- 验证成功后自动升级到 PBKDF2
+        if (stored == hashPasswordSha256(password)) {
+            AppLogger.i(TAG, "检测到旧版 SHA-256 格式，正在升级到 PBKDF2...")
+            upgradePasswordToPbkdf2(password)
+            return true
+        }
+        return false
+    }
+
+    // 将旧版 SHA-256 格式升级到 PBKDF2
+    private suspend fun upgradePasswordToPbkdf2(password: String) {
+        try {
+            val salt = generateSalt()
+            val (_, hash) = hashPasswordPbkdf2(password, salt)
+            val storedValue = "${bytesToHex(salt)}:$hash"
+            context.dataStore.edit { prefs ->
+                prefs[KEY_PASSWORD_HASH] = storedValue
+            }
+            AppLogger.i(TAG, "密码已升级到 PBKDF2 格式")
+        } catch (e: Exception) {
+            AppLogger.e(TAG, "密码升级失败", e)
+        }
     }
 
     // 禁用密码
@@ -195,19 +222,20 @@ class PasswordManager(private val context: Context) {
         )
     }
 
-    // SHA-256 哈希（默认方式，跨设备、跨版本一致）
+    // PBKDF2 哈希（当前默认方式，100,000 次迭代）
+    private fun hashPasswordPbkdf2(password: String, salt: ByteArray): Pair<String, String> {
+        val factory = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256")
+        val spec = PBEKeySpec(password.toCharArray(), salt, PBKDF2_ITERATIONS, KEY_LENGTH)
+        val hash = factory.generateSecret(spec).encoded
+        return Pair(bytesToHex(salt), bytesToHex(hash))
+    }
+
+    // SHA-256 哈希（仅用于旧版兼容，自动升级到 PBKDF2）
+    @Deprecated("仅用于旧版本兼容，验证后会自动升级到 PBKDF2")
     private fun hashPasswordSha256(password: String): String {
         val digest = MessageDigest.getInstance("SHA-256")
         val bytes = digest.digest(password.toByteArray(Charsets.UTF_8))
         return bytesToHex(bytes)
-    }
-
-    // PBKDF2 哈希（仅用于验证旧版 0.3.7 beta 设置的密码）
-    private fun hashPasswordPbkdf2(password: String, salt: ByteArray): Pair<String, String> {
-        val factory = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256")
-        val spec = PBEKeySpec(password.toCharArray(), salt, 100_000, 256)
-        val hash = factory.generateSecret(spec).encoded
-        return Pair(bytesToHex(hash), bytesToHex(salt))
     }
 
     private fun bytesToHex(bytes: ByteArray): String =
