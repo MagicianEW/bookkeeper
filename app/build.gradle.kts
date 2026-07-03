@@ -56,6 +56,12 @@ android {
     lint {
         error += "RemoveWorkManagerInitializer"
     }
+
+    packaging {
+        jniLibs {
+            useLegacyPackaging = true
+        }
+    }
 }
 
 dependencies {

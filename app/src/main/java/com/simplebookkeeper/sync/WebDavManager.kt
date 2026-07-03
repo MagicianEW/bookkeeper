@@ -13,10 +13,14 @@ import okhttp3.RequestBody.Companion.asRequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.File
 import java.io.IOException
+import java.security.cert.X509Certificate
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import java.util.concurrent.TimeUnit
+import javax.net.ssl.SSLContext
+import javax.net.ssl.TrustManager
+import javax.net.ssl.X509TrustManager
 
 // ─── 同步结果类型 ───────────────────────────────────────────────
 
@@ -33,6 +37,8 @@ class WebDavManager(private val context: Context) {
         .connectTimeout(30, TimeUnit.SECONDS)
         .readTimeout(60, TimeUnit.SECONDS)
         .writeTimeout(60, TimeUnit.SECONDS)
+        .hostnameVerifier { _, _ -> true } // 允许自签名证书
+        .sslSocketFactory(createUnsafeSslSocketFactory(), createUnsafeTrustManager())
         .build()
 
     private val REMOTE_FOLDER = "bookkeeper"
@@ -132,6 +138,20 @@ class WebDavManager(private val context: Context) {
             val response = client.newCall(request).execute()
             if (response.code in 200..299 || response.code == 207) Result.success(Unit)
             else Result.failure(IOException("服务器返回 ${response.code}"))
+        } catch (e: IOException) {
+            AppLogger.e(TAG, "testConnection IOException", e)
+            val message = when {
+                e.message?.contains("Connection reset", ignoreCase = true) == true ->
+                    "连接被服务器重置，请检查服务器地址是否正确，或尝试使用HTTPS"
+                e.message?.contains("Connection refused", ignoreCase = true) == true ->
+                    "连接被拒绝，请检查服务器地址和端口是否正确"
+                e.message?.contains("SSL", ignoreCase = true) == true ->
+                    "SSL证书错误，请尝试使用HTTP或检查证书"
+                e.message?.contains("timeout", ignoreCase = true) == true ->
+                    "连接超时，请检查网络或服务器地址"
+                else -> e.message ?: "连接失败"
+            }
+            Result.failure(IOException(message, e))
         } catch (e: Exception) {
             AppLogger.e(TAG, "testConnection 异常", e)
             Result.failure(e)
@@ -309,5 +329,20 @@ class WebDavManager(private val context: Context) {
 
     companion object {
         private const val TAG = "WebDavManager"
+    }
+
+    // 允许自签名SSL证书
+    private fun createUnsafeSslSocketFactory(): javax.net.ssl.SSLSocketFactory {
+        val sslContext = SSLContext.getInstance("TLS")
+        sslContext.init(null, arrayOf(createUnsafeTrustManager()), java.security.SecureRandom())
+        return sslContext.socketFactory
+    }
+
+    private fun createUnsafeTrustManager(): X509TrustManager {
+        return object : X509TrustManager {
+            override fun checkClientTrusted(chain: Array<out X509Certificate>?, authType: String?) {}
+            override fun checkServerTrusted(chain: Array<out X509Certificate>?, authType: String?) {}
+            override fun getAcceptedIssuers(): Array<X509Certificate> = emptyArray()
+        }
     }
 }
