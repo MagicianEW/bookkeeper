@@ -25,30 +25,21 @@ import com.simplebookkeeper.ui.theme.ThemeMode
 import com.simplebookkeeper.util.LocaleHelper
 import com.simplebookkeeper.viewmodel.MainViewModel
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
 
 class MainActivity : AppCompatActivity() {
 
     companion object {
         @JvmStatic
-        var lastAppliedLanguage: LanguageMode? = null
+        var lastAppliedLanguage: LanguageMode = LanguageMode.FOLLOW_SYSTEM
     }
 
     @OptIn(ExperimentalMaterial3WindowSizeClassApi::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         val app = application as BookkeeperApp
 
-        // 从 DataStore 同步读取语言设置（冷启动时 only，热启动用静态变量）
-        if (lastAppliedLanguage == null) {
-            runBlocking {
-                lastAppliedLanguage = app.settingsRepository.languageMode.first()
-            }
-        }
-
-        // 应用语言设置
-        applyLanguage(lastAppliedLanguage!!)
+        // 应用语言设置（默认 FOLLOW_SYSTEM，后续由 Flow 更新）
+        applyLanguage(lastAppliedLanguage)
 
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
@@ -62,9 +53,10 @@ class MainActivity : AppCompatActivity() {
             // languageMode 不再用于驱动 recreate，仅用于 UI 状态显示
             val languageMode by app.settingsRepository.languageMode.collectAsState(initial = LanguageMode.FOLLOW_SYSTEM)
 
-            // 同步静态变量（语言切换由 SettingsScreen 显式重启应用来生效）
+            // 同步静态变量并在语言加载后应用（语言切换由 SettingsScreen 显式重启应用来生效）
             LaunchedEffect(languageMode) {
                 lastAppliedLanguage = languageMode
+                applyLanguage(languageMode)
             }
             val darkTheme = when (themeMode) {
                 ThemeMode.LIGHT -> false
