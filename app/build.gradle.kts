@@ -108,4 +108,13 @@ dependencies {
 
     // Zip4j (encrypted ZIP with AES-256)
     implementation("net.lingala.zip4j:zip4j:2.11.5")
+
+    // Testing
+    testImplementation("junit:junit:4.13.2")
+    testImplementation("org.mockito:mockito-core:5.11.0")
+    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.8.1")
+    testImplementation("androidx.arch.core:core-testing:2.2.0")
+    testImplementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.8.3")
+    androidTestImplementation("androidx.test.ext:junit:1.2.1")
+    androidTestImplementation("androidx.test.espresso:espresso-core:3.6.1")
 }
