@@ -144,6 +144,9 @@ app/build/outputs/apk/debug/app-debug.apk
 
 | 版本 | 说明 |
 |------|------|
+| v0.4.3 | **安全性与稳定性增强**：密码哈希升级为 PBKDF2；WebDAV 凭据迁移至 EncryptedSharedPreferences；重构 MainViewModel 为 TransactionViewModel、SyncViewModel、SavingsViewModel；移除 runBlocking 调用；缓存可用年份避免重复数据库查询；WebDAV SSL 支持改进；新增 PasswordManager 单元测试 |
+| v0.4.2 | **重构同步/导出为 CSV+ZIP 方案**：使用 Zip4j AES-256 加密；优化数据同步和导出流程 |
+| v0.4.1 | 开屏页应用名国际化 + 英文应用名修正 |
 | v0.4.0 | **架构重构 + 国际化**：回归单库架构（bookkeeper.db 含 Transaction + Category + Saving 三表）；新增储蓄管理模块；新增 i18n 多语言支持（简中/繁中/英文）；新增主题模式切换（浅色/深色/跟随系统）；数据导出改为加密 ZIP 格式；修复生物识别指纹弹窗不弹出（BiometricScheduler 队列堆积 + Activity onPause 自杀问题）；修复语言切换无限循环；版本号统一管理 |
 | v0.3.9 | 修复分类丢失问题 - MetaDatabase onCreate 中使用同步 SQL 插入默认分类 |
 | v0.3.8 | 修复应用重启后分类丢失问题；新增应用开屏页面；新增刷新按钮；修复搜索状态异常 |

@@ -144,6 +144,9 @@ app/build/outputs/apk/debug/app-debug.apk
 
 | Version | Notes |
 |---------|-------|
+| v0.4.3 | **Security & stability enhancements**: Upgraded password hashing to PBKDF2; migrated WebDAV credentials to EncryptedSharedPreferences; refactored MainViewModel into TransactionViewModel, SyncViewModel, SavingsViewModel; removed runBlocking calls; cached available years to avoid repeated DB queries; improved WebDAV SSL support; added PasswordManager unit tests |
+| v0.4.2 | **Refactored sync/export to CSV+ZIP scheme**: Using Zip4j AES-256 encryption; optimized data sync and export flow |
+| v0.4.1 | Splash screen app name i18n + English app name fix |
 | v0.4.0 | **Architecture refactor + i18n**: Reverted to single-database architecture (bookkeeper.db with Transaction + Category + Saving tables); added savings management module; added i18n multi-language support (zh-CN/zh-TW/en); added theme mode switching (Light/Dark/System); data export now uses encrypted ZIP format; fixed biometric fingerprint dialog not appearing (BiometricScheduler queue buildup + Activity onPause self-kill issue); fixed language switching infinite loop; unified version number management |
 | v0.3.9 | Fixed category loss — MetaDatabase onCreate uses synchronous SQL to insert default categories |
 | v0.3.8 | Fixed category loss after app restart; added splash screen; added refresh button; fixed search state anomaly |
