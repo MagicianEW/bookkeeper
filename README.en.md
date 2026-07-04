@@ -2,7 +2,7 @@
 
 > A lightweight, clean, privacy-focused Android personal expense tracker with income/expense management, savings tracking, and WebDAV cloud sync
 
-**Version**: v0.4.0 ｜ **Minimum OS**: Android 12 (API 31)
+**Version**: v0.4.3 ｜ **Minimum OS**: Android 12 (API 31)
 
 [简体中文](README.md) ｜ [繁體中文](README.zh-TW.md)
 

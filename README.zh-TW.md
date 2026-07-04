@@ -2,7 +2,7 @@
 
 > 一款輕量、簡潔、注重隱私的 Android 個人記帳應用，支援收入/支出管理、儲蓄追蹤、WebDAV 雲端同步
 
-**版本**：v0.4.0　｜　**最低系統**：Android 12（API 31）
+**版本**：v0.4.3　｜　**最低系統**：Android 12（API 31）
 
 [简体中文](README.md) ｜ [English](README.en.md)
 

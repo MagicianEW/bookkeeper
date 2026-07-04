@@ -2,7 +2,7 @@
 
 > 一款轻量、简洁、注重隐私的 Android 个人记账应用，支持收入/支出管理、储蓄追踪、WebDAV 云端同步
 
-**版本**：v0.4.0　｜　**最低系统**：Android 12（API 31）
+**版本**：v0.4.3　｜　**最低系统**：Android 12（API 31）
 
 [English](README.en.md) ｜ [繁體中文](README.zh-TW.md)
 
