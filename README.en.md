@@ -2,7 +2,7 @@
 
 > A lightweight, clean, privacy-focused Android personal expense tracker with income/expense management, savings tracking, and WebDAV cloud sync
 
-**Version**: v0.4.3 ｜ **Minimum OS**: Android 12 (API 31)
+**Version**: v0.4.4 ｜ **Minimum OS**: Android 12 (API 31)
 
 [简体中文](README.md) ｜ [繁體中文](README.zh-TW.md)
 
@@ -144,6 +144,7 @@ app/build/outputs/apk/debug/app-debug.apk
 
 | Version | Notes |
 |---------|-------|
+| v0.4.4 | **UI improvements & keyboard handling**: Theme mode and language switched to dropdown menus; fixed virtual keyboard covering input fields; fixed HomeScreen day card spacing |
 | v0.4.3 | **Security & stability enhancements**: Upgraded password hashing to PBKDF2; migrated WebDAV credentials to EncryptedSharedPreferences; refactored MainViewModel into TransactionViewModel, SyncViewModel, SavingsViewModel; removed runBlocking calls; cached available years to avoid repeated DB queries; improved WebDAV SSL support; added PasswordManager unit tests |
 | v0.4.2 | **Refactored sync/export to CSV+ZIP scheme**: Using Zip4j AES-256 encryption; optimized data sync and export flow |
 | v0.4.1 | Splash screen app name i18n + English app name fix |

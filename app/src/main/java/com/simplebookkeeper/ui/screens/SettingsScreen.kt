@@ -187,7 +187,9 @@ fun SettingsScreen(
         }
 
         LazyColumn(
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier
+                .fillMaxSize()
+                .imePadding(),
             contentPadding = PaddingValues(bottom = 80.dp)
         ) {
             // ——— 外观 ———
@@ -893,88 +895,118 @@ private fun AboutInfoRow(label: String, value: String) {
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun ThemeModeSelector(
     currentMode: ThemeMode,
     onModeChange: (ThemeMode) -> Unit
 ) {
+    var expanded by remember { mutableStateOf(false) }
+
     Surface(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 2.dp),
         shape = MaterialTheme.shapes.medium
     ) {
-        Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(
-                    Icons.Default.Palette,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary
+        Row(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 14.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                Icons.Default.Palette,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary
+            )
+            Spacer(modifier = Modifier.width(16.dp))
+            Text(stringResource(R.string.theme_mode), fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
+            ExposedDropdownMenuBox(
+                expanded = expanded,
+                onExpandedChange = { expanded = !expanded },
+                modifier = Modifier.width(160.dp)
+            ) {
+                OutlinedTextField(
+                    value = stringResource(currentMode.displayNameResId),
+                    onValueChange = {},
+                    readOnly = true,
+                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+                    modifier = Modifier.menuAnchor(),
+                    textStyle = MaterialTheme.typography.bodyMedium,
+                    singleLine = true
                 )
-                Spacer(modifier = Modifier.width(16.dp))
-                Text(stringResource(R.string.theme_mode), fontWeight = FontWeight.Medium)
-            }
-            Spacer(modifier = Modifier.height(8.dp))
-            ThemeMode.entries.forEach { mode ->
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                ExposedDropdownMenu(
+                    expanded = expanded,
+                    onDismissRequest = { expanded = false }
                 ) {
-                    RadioButton(
-                        selected = mode == currentMode,
-                        onClick = { onModeChange(mode) }
-                    )
-                    Text(
-                        stringResource(mode.displayNameResId),
-                        modifier = Modifier.padding(start = 4.dp),
-                        style = MaterialTheme.typography.bodyLarge
-                    )
+                    ThemeMode.entries.forEach { mode ->
+                        DropdownMenuItem(
+                            text = { Text(stringResource(mode.displayNameResId)) },
+                            onClick = {
+                                onModeChange(mode)
+                                expanded = false
+                            },
+                            contentPadding = ExposedDropdownMenuDefaults.ItemContentPadding
+                        )
+                    }
                 }
             }
         }
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun LanguageModeSelector(
     currentMode: LanguageMode,
     onModeChange: (LanguageMode) -> Unit
 ) {
+    var expanded by remember { mutableStateOf(false) }
+
     Surface(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 2.dp),
         shape = MaterialTheme.shapes.medium
     ) {
-        Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(
-                    Icons.Default.Language,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary
+        Row(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 14.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                Icons.Default.Language,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary
+            )
+            Spacer(modifier = Modifier.width(16.dp))
+            Text(stringResource(R.string.language), fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
+            ExposedDropdownMenuBox(
+                expanded = expanded,
+                onExpandedChange = { expanded = !expanded },
+                modifier = Modifier.width(160.dp)
+            ) {
+                OutlinedTextField(
+                    value = stringResource(currentMode.displayNameResId),
+                    onValueChange = {},
+                    readOnly = true,
+                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+                    modifier = Modifier.menuAnchor(),
+                    textStyle = MaterialTheme.typography.bodyMedium,
+                    singleLine = true
                 )
-                Spacer(modifier = Modifier.width(16.dp))
-                Text(stringResource(R.string.language), fontWeight = FontWeight.Medium)
-            }
-            Spacer(modifier = Modifier.height(8.dp))
-            LanguageMode.entries.forEach { mode ->
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                ExposedDropdownMenu(
+                    expanded = expanded,
+                    onDismissRequest = { expanded = false }
                 ) {
-                    RadioButton(
-                        selected = mode == currentMode,
-                        onClick = { onModeChange(mode) }
-                    )
-                    Text(
-                        stringResource(mode.displayNameResId),
-                        modifier = Modifier.padding(start = 4.dp),
-                        style = MaterialTheme.typography.bodyLarge
-                    )
+                    LanguageMode.entries.forEach { mode ->
+                        DropdownMenuItem(
+                            text = { Text(stringResource(mode.displayNameResId)) },
+                            onClick = {
+                                onModeChange(mode)
+                                expanded = false
+                            },
+                            contentPadding = ExposedDropdownMenuDefaults.ItemContentPadding
+                        )
+                    }
                 }
             }
         }

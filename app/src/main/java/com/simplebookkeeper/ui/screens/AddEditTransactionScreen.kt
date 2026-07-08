@@ -134,6 +134,7 @@ fun AddEditTransactionScreen(
                 .fillMaxSize()
                 .padding(padding)
                 .verticalScroll(rememberScrollState())
+                .imePadding()
                 .padding(16.dp)
         ) {
             // 收入/支出切换

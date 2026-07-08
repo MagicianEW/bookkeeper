@@ -2,7 +2,7 @@
 
 > 一款輕量、簡潔、注重隱私的 Android 個人記帳應用，支援收入/支出管理、儲蓄追蹤、WebDAV 雲端同步
 
-**版本**：v0.4.3　｜　**最低系統**：Android 12（API 31）
+**版本**：v0.4.4　｜　**最低系統**：Android 12（API 31）
 
 [简体中文](README.md) ｜ [English](README.en.md)
 
@@ -144,6 +144,7 @@ app/build/outputs/apk/debug/app-debug.apk
 
 | 版本 | 說明 |
 |------|------|
+| v0.4.4 | **UI 優化與鍵盤適配**：主題模式和語言選項改為下拉選單；修復虛擬鍵盤遮擋輸入框問題；修復 HomeScreen 日視圖卡片間距 |
 | v0.4.3 | **安全性與穩定性增強**：密碼雜湊升級為 PBKDF2；WebDAV 憑據遷移至 EncryptedSharedPreferences；重構 MainViewModel 為 TransactionViewModel、SyncViewModel、SavingsViewModel；移除 runBlocking 呼叫；快取可用年份避免重複資料庫查詢；WebDAV SSL 支援改進；新增 PasswordManager 單元測試 |
 | v0.4.2 | **重構同步/匯出為 CSV+ZIP 方案**：使用 Zip4j AES-256 加密；最佳化資料同步和匯出流程 |
 | v0.4.1 | 開啟頁面應用名國際化 + 英文應用名修正 |
