@@ -5,10 +5,11 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowBack
@@ -17,6 +18,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -60,6 +62,15 @@ fun AddEditTransactionScreen(
     var showAddCategoryDialog by remember { mutableStateOf(false) }
     var newCategoryName by remember { mutableStateOf("") }
     var showDeleteDialog by remember { mutableStateOf(false) }
+
+    val listState = rememberLazyListState()
+    var noteFieldFocused by remember { mutableStateOf(false) }
+    val noteItemIndex = 13
+    LaunchedEffect(noteFieldFocused) {
+        if (noteFieldFocused) {
+            listState.animateScrollToItem(noteItemIndex)
+        }
+    }
 
     // 编辑模式：从数据库加载原始数据并填入表单
     LaunchedEffect(transactionId) {
@@ -129,178 +140,199 @@ fun AddEditTransactionScreen(
             ) { CircularProgressIndicator() }
             return@Scaffold
         }
-        Column(
+        LazyColumn(
+            state = listState,
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .verticalScroll(rememberScrollState())
-                .imePadding()
                 .padding(16.dp)
+                .imePadding()
         ) {
-            // 收入/支出切换
-            val expenseText = stringResource(R.string.expense)
-            val incomeText = stringResource(R.string.income)
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 16.dp),
-                horizontalArrangement = Arrangement.Center
-            ) {
-                TypeTab(
-                    text = expenseText,
-                    selected = selectedType == TransactionType.EXPENSE,
-                    color = ExpenseRed,
-                    onClick = {
-                        selectedType = TransactionType.EXPENSE
-                        selectedCategoryId = 0L
-                    }
-                )
-                Spacer(modifier = Modifier.width(16.dp))
-                TypeTab(
-                    text = incomeText,
-                    selected = selectedType == TransactionType.INCOME,
-                    color = IncomeGreen,
-                    onClick = {
-                        selectedType = TransactionType.INCOME
-                        selectedCategoryId = 0L
-                    }
+            item {
+                // 收入/支出切换
+                val expenseText = stringResource(R.string.expense)
+                val incomeText = stringResource(R.string.income)
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 16.dp),
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    TypeTab(
+                        text = expenseText,
+                        selected = selectedType == TransactionType.EXPENSE,
+                        color = ExpenseRed,
+                        onClick = {
+                            selectedType = TransactionType.EXPENSE
+                            selectedCategoryId = 0L
+                        }
+                    )
+                    Spacer(modifier = Modifier.width(16.dp))
+                    TypeTab(
+                        text = incomeText,
+                        selected = selectedType == TransactionType.INCOME,
+                        color = IncomeGreen,
+                        onClick = {
+                            selectedType = TransactionType.INCOME
+                            selectedCategoryId = 0L
+                        }
+                    )
+                }
+            }
+
+            item {
+                // 金额输入
+                OutlinedTextField(
+                    value = amountText,
+                    onValueChange = { v ->
+                        if (v.matches(Regex("^\\d{0,10}(\\.\\d{0,2})?\$"))) amountText = v
+                    },
+                    label = { Text(stringResource(R.string.amount)) },
+                    prefix = { Text("¥") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true
                 )
             }
 
-            // 金额输入
-            OutlinedTextField(
-                value = amountText,
-                onValueChange = { v ->
-                    if (v.matches(Regex("^\\d{0,10}(\\.\\d{0,2})?\$"))) amountText = v
-                },
-                label = { Text(stringResource(R.string.amount)) },
-                prefix = { Text("¥") },
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true
-            )
+            item { Spacer(modifier = Modifier.height(12.dp)) }
 
-            Spacer(modifier = Modifier.height(12.dp))
-
-            // 日期选择
-            OutlinedTextField(
-                value = dateFormat.format(selectedDate),
-                onValueChange = {},
-                label = { Text(stringResource(R.string.date)) },
-                readOnly = true,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { showDatePicker = true },
-                enabled = false,
-                colors = OutlinedTextFieldDefaults.colors(
-                    disabledTextColor = MaterialTheme.colorScheme.onSurface,
-                    disabledBorderColor = MaterialTheme.colorScheme.outline,
-                    disabledLabelColor = MaterialTheme.colorScheme.onSurfaceVariant
+            item {
+                // 日期选择
+                OutlinedTextField(
+                    value = dateFormat.format(selectedDate),
+                    onValueChange = {},
+                    label = { Text(stringResource(R.string.date)) },
+                    readOnly = true,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { showDatePicker = true },
+                    enabled = false,
+                    colors = OutlinedTextFieldDefaults.colors(
+                        disabledTextColor = MaterialTheme.colorScheme.onSurface,
+                        disabledBorderColor = MaterialTheme.colorScheme.outline,
+                        disabledLabelColor = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 )
-            )
+            }
 
-            Spacer(modifier = Modifier.height(12.dp))
+            item { Spacer(modifier = Modifier.height(12.dp)) }
 
-            // 分类选择
-            Text(stringResource(R.string.category), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Spacer(modifier = Modifier.height(8.dp))
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(max = 240.dp)
-                    .verticalScroll(rememberScrollState())
-            ) {
-                FlowRow(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
+            item {
+                // 分类选择
+                Text(stringResource(R.string.category), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+
+            item { Spacer(modifier = Modifier.height(8.dp)) }
+
+            item {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 240.dp)
                 ) {
-                    filteredCategories.forEach { category ->
-                        CategoryChip(
-                            category = category,
-                            selected = selectedCategoryId == category.id,
-                            onClick = { selectedCategoryId = category.id }
-                        )
-                    }
-                    // 末尾添加"＋"按钮
-                    Surface(
-                        shape = RoundedCornerShape(8.dp),
-                        color = MaterialTheme.colorScheme.surfaceVariant,
-                        modifier = Modifier.clickable { showAddCategoryDialog = true }
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Box(contentAlignment = Alignment.Center, modifier = Modifier.padding(8.dp)) {
-                            Icon(
-                                Icons.Default.Add,
-                                contentDescription = stringResource(R.string.add_category_icon),
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(20.dp)
+                        filteredCategories.forEach { category ->
+                            CategoryChip(
+                                category = category,
+                                selected = selectedCategoryId == category.id,
+                                onClick = { selectedCategoryId = category.id }
                             )
+                        }
+                        // 末尾添加"＋"按钮
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant,
+                            modifier = Modifier.clickable { showAddCategoryDialog = true }
+                        ) {
+                            Box(contentAlignment = Alignment.Center, modifier = Modifier.padding(8.dp)) {
+                                Icon(
+                                    Icons.Default.Add,
+                                    contentDescription = stringResource(R.string.add_category_icon),
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
                         }
                     }
                 }
             }
 
-            Spacer(modifier = Modifier.height(12.dp))
+            item { Spacer(modifier = Modifier.height(12.dp)) }
 
-            // 付款方式
-            Text(stringResource(R.string.payment_method), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Spacer(modifier = Modifier.height(8.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                listOf(
-                    PaymentMethod.WECHAT to stringResource(R.string.wechat),
-                    PaymentMethod.ALIPAY to stringResource(R.string.alipay),
-                    PaymentMethod.CASH to stringResource(R.string.cash),
-                    PaymentMethod.BANK_CARD to stringResource(R.string.card)
-                ).forEach { (method, label) ->
-                    FilterChip(
-                        selected = selectedPayment == method,
-                        onClick = { selectedPayment = method },
-                        label = { Text(label, fontSize = 12.sp) }
-                    )
+            item {
+                // 付款方式
+                Text(stringResource(R.string.payment_method), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+
+            item { Spacer(modifier = Modifier.height(8.dp)) }
+
+            item {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    listOf(
+                        PaymentMethod.WECHAT to stringResource(R.string.wechat),
+                        PaymentMethod.ALIPAY to stringResource(R.string.alipay),
+                        PaymentMethod.CASH to stringResource(R.string.cash),
+                        PaymentMethod.BANK_CARD to stringResource(R.string.card)
+                    ).forEach { (method, label) ->
+                        FilterChip(
+                            selected = selectedPayment == method,
+                            onClick = { selectedPayment = method },
+                            label = { Text(label, fontSize = 12.sp) }
+                        )
+                    }
                 }
             }
 
-            Spacer(modifier = Modifier.height(12.dp))
+            item { Spacer(modifier = Modifier.height(12.dp)) }
 
-            // 备注
-            OutlinedTextField(
-                value = note,
-                onValueChange = { note = it },
-                label = { Text(stringResource(R.string.note_optional)) },
-                modifier = Modifier.fillMaxWidth(),
-                maxLines = 2
-            )
+            item {
+                // 备注
+                OutlinedTextField(
+                    value = note,
+                    onValueChange = { note = it },
+                    label = { Text(stringResource(R.string.note_optional)) },
+                    modifier = Modifier.fillMaxWidth().onFocusChanged { noteFieldFocused = it.isFocused },
+                    maxLines = 2
+                )
+            }
 
-            Spacer(modifier = Modifier.height(24.dp))
+            item { Spacer(modifier = Modifier.height(24.dp)) }
 
-            // 保存按钮
-            Button(
-                onClick = {
-                    val amountYuan = amountText.toDoubleOrNull() ?: return@Button
-                    if (amountYuan <= 0 || selectedCategoryId == 0L) return@Button
-                    val transaction = Transaction(
-                        id = transactionId ?: 0L,
-                        type = selectedType,
-                        amount = (amountYuan * 100).toLong(),  // 元 → 分
-                        categoryId = selectedCategoryId,
-                        paymentMethod = selectedPayment,
-                        note = note.trim(),
-                        date = selectedDate
-                    )
-                    if (isEditMode) {
-                        viewModel.updateTransaction(transaction) { onBack() }
-                    } else {
-                        viewModel.addTransaction(transaction) { onBack() }
-                    }
-                },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(50.dp),
-                shape = RoundedCornerShape(12.dp)
-            ) {
-                Text(stringResource(R.string.save), fontSize = 16.sp, fontWeight = FontWeight.Bold)
+            item {
+                // 保存按钮
+                Button(
+                    onClick = {
+                        val amountYuan = amountText.toDoubleOrNull() ?: return@Button
+                        if (amountYuan <= 0 || selectedCategoryId == 0L) return@Button
+                        val transaction = Transaction(
+                            id = transactionId ?: 0L,
+                            type = selectedType,
+                            amount = (amountYuan * 100).toLong(),  // 元 → 分
+                            categoryId = selectedCategoryId,
+                            paymentMethod = selectedPayment,
+                            note = note.trim(),
+                            date = selectedDate
+                        )
+                        if (isEditMode) {
+                            viewModel.updateTransaction(transaction) { onBack() }
+                        } else {
+                            viewModel.addTransaction(transaction) { onBack() }
+                        }
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(50.dp),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Text(stringResource(R.string.save), fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                }
             }
         }
     }

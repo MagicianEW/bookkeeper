@@ -28,7 +28,6 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.simplebookkeeper.BookkeeperApp
-import com.simplebookkeeper.BuildConfig
 import com.simplebookkeeper.R
 import com.simplebookkeeper.data.DataExporter
 import com.simplebookkeeper.data.model.Category
@@ -817,6 +816,13 @@ suspend fun exportLogsToUri(context: Context, uri: Uri) {
 
 @Composable
 fun AboutDialog(onDismiss: () -> Unit) {
+    val context = LocalContext.current
+    val versionName = try {
+        context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: ""
+    } catch (e: Exception) {
+        ""
+    }
+
     AlertDialog(
         onDismissRequest = onDismiss,
         icon = {
@@ -845,7 +851,7 @@ fun AboutDialog(onDismiss: () -> Unit) {
                     color = MaterialTheme.colorScheme.primaryContainer
                 ) {
                     Text(
-                        "v${BuildConfig.VERSION_NAME}",
+                        "v$versionName",
                         style = MaterialTheme.typography.labelLarge,
                         color = MaterialTheme.colorScheme.onPrimaryContainer,
                         modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)

@@ -9,16 +9,23 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.simplebookkeeper.BuildConfig
 import com.simplebookkeeper.R
 
 @Composable
 fun SplashScreen() {
+    val context = LocalContext.current
+    val versionName = try {
+        context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: ""
+    } catch (e: Exception) {
+        ""
+    }
+
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -43,7 +50,7 @@ fun SplashScreen() {
             )
             Spacer(modifier = Modifier.height(48.dp))
             Text(
-                text = "v${BuildConfig.VERSION_NAME}",
+                text = "v$versionName",
                 fontSize = 12.sp,
                 color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.7f)
             )
