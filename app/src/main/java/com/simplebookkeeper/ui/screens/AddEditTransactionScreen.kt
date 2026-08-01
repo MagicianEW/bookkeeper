@@ -28,6 +28,7 @@ import androidx.compose.ui.unit.sp
 import com.simplebookkeeper.R
 import com.simplebookkeeper.data.model.Category
 import com.simplebookkeeper.data.model.PaymentMethod
+import com.simplebookkeeper.util.AppLogger
 import com.simplebookkeeper.data.model.Transaction
 import com.simplebookkeeper.data.model.TransactionType
 import com.simplebookkeeper.ui.theme.ExpenseRed
@@ -62,6 +63,7 @@ fun AddEditTransactionScreen(
     var showAddCategoryDialog by remember { mutableStateOf(false) }
     var newCategoryName by remember { mutableStateOf("") }
     var showDeleteDialog by remember { mutableStateOf(false) }
+    var isSaving by remember { mutableStateOf(false) }
 
     val listState = rememberLazyListState()
     var noteFieldFocused by remember { mutableStateOf(false) }
@@ -309,8 +311,17 @@ fun AddEditTransactionScreen(
                 // 保存按钮
                 Button(
                     onClick = {
+                        if (isSaving) {
+                            AppLogger.i("AddEditTxScreen", "保存拦截: isSaving=$isSaving")
+                            return@Button
+                        }
+                        isSaving = true
+                        AppLogger.i("AddEditTxScreen", "保存按钮点击: isEditMode=$isEditMode, transactionId=$transactionId")
                         val amountYuan = amountText.toDoubleOrNull() ?: return@Button
-                        if (amountYuan <= 0 || selectedCategoryId == 0L) return@Button
+                        if (amountYuan <= 0 || selectedCategoryId == 0L) {
+                            AppLogger.i("AddEditTxScreen", "保存校验失败: amountYuan=$amountYuan, selectedCategoryId=$selectedCategoryId")
+                            return@Button
+                        }
                         val transaction = Transaction(
                             id = transactionId ?: 0L,
                             type = selectedType,
@@ -320,10 +331,17 @@ fun AddEditTransactionScreen(
                             note = note.trim(),
                             date = selectedDate
                         )
+                        AppLogger.i("AddEditTxScreen", "准备保存: type=$selectedType, amount=${amountYuan * 100}, categoryId=$selectedCategoryId, date=$selectedDate")
                         if (isEditMode) {
-                            viewModel.updateTransaction(transaction) { onBack() }
+                            viewModel.updateTransaction(transaction) {
+                                AppLogger.i("AddEditTxScreen", "update完成，触发onBack")
+                                onBack()
+                            }
                         } else {
-                            viewModel.addTransaction(transaction) { onBack() }
+                            viewModel.addTransaction(transaction) {
+                                AppLogger.i("AddEditTxScreen", "add完成，触发onBack")
+                                onBack()
+                            }
                         }
                     },
                     modifier = Modifier

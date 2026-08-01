@@ -86,10 +86,18 @@ class TransactionViewModel(application: Application) : AndroidViewModel(applicat
     }
 
     fun addTransaction(transaction: Transaction, onDone: () -> Unit = {}) {
+        AppLogger.i("TransactionVM", "addTransaction called: id=${transaction.id}, type=${transaction.type}, amount=${transaction.amount}, categoryId=${transaction.categoryId}")
         viewModelScope.launch {
-            repo.addTransaction(transaction)
+            val result = repo.addTransaction(transaction)
+            AppLogger.i("TransactionVM", "repo.addTransaction returned id=$result")
             val config = app.settingsRepository.webDavConfig.first()
-            if (config.enabled) SyncWorker.syncNow(app)
+            if (config.enabled) {
+                AppLogger.i("TransactionVM", "WebDAV enabled, triggering sync")
+                SyncWorker.syncNow(app)
+            } else {
+                AppLogger.i("TransactionVM", "WebDAV disabled, skip sync")
+            }
+            AppLogger.i("TransactionVM", "调用onDone callback")
             onDone()
         }
     }
