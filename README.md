@@ -2,7 +2,7 @@
 
 > 一款轻量、简洁、注重隐私的 Android 个人记账应用，支持收入/支出管理、储蓄追踪、WebDAV 云端同步
 
-**版本**：v0.4.5　｜　**最低系统**：Android 12（API 31）
+**版本**：v0.4.6　｜　**最低系统**：Android 12（API 31）
 
 [English](README.en.md) ｜ [繁體中文](README.zh-TW.md)
 
@@ -144,7 +144,7 @@ app/build/outputs/apk/debug/app-debug.apk
 
 | 版本 | 说明 |
 |------|------|
-| v0.4.5 | **修复重复保存 bug**：添加保存按钮防重复点击机制 |
+| v0.4.6 | **代码审查修复 + 自定义收/付款方式**：修复搜索结果不更新问题（Flow改为collect）；数据导入添加事务保护；同步时密码存储损坏时主动报错；EncryptedSharedPreferences实例缓存优化；getAllYears改为suspend；SimpleDateFormat提取为顶层常量；年份选择增加边界保护；密码最小长度从4位改为6位；hexToBytes有符号字节修复；WorkManager同步策略改为UPDATE；AppLogger流式读写；MainViewModel lazy初始化优化；**新增自定义收/付款方式功能**，支持添加、删除、导入导出备份 |
 | v0.4.4 | **UI 优化与键盘适配**：主题模式和语言选项改为下拉菜单；修复虚拟键盘遮挡输入框问题；修复 HomeScreen 日视图卡片间距 |
 | v0.4.3 | **安全性与稳定性增强**：密码哈希升级为 PBKDF2；WebDAV 凭据迁移至 EncryptedSharedPreferences；重构 MainViewModel 为 TransactionViewModel、SyncViewModel、SavingsViewModel；移除 runBlocking 调用；缓存可用年份避免重复数据库查询；WebDAV SSL 支持改进；新增 PasswordManager 单元测试 |
 | v0.4.2 | **重构同步/导出为 CSV+ZIP 方案**：使用 Zip4j AES-256 加密；优化数据同步和导出流程 |

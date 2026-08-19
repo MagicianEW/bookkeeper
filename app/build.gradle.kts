@@ -13,8 +13,8 @@ android {
         applicationId = "com.simplebookkeeper"
         minSdk = 31
         targetSdk = 35
-        versionCode = 405
-        versionName = "0.4.5"
+        versionCode = 406
+        versionName = "v0.4.6"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -123,4 +123,39 @@ dependencies {
     testImplementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.8.3")
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.6.1")
+}
+
+// 在构建时自动替换 README 中的 {{VERSION}} 占位符为实际版本号
+// 只需在 build.gradle.kts 中修改 versionName 一处
+val projectRoot = rootProject.projectDir.absolutePath
+tasks.register("replaceReadmeVersion") {
+    group = "version"
+    description = "Replace {{VERSION}} placeholder in README files with the actual versionName from build.gradle.kts"
+    doLast {
+        val versionName = android.defaultConfig.versionName!!
+        listOf(
+            "$projectRoot/README.md",
+            "$projectRoot/README.zh-TW.md",
+            "$projectRoot/README.en.md"
+        ).forEach { filePath ->
+            val readmeFile = file(filePath)
+            if (readmeFile.exists()) {
+                val content = readmeFile.readText()
+                if (content.contains("{{VERSION}}")) {
+                    readmeFile.writeText(content.replace("{{VERSION}}", versionName))
+                    println("[replaceReadmeVersion] Updated $filePath → $versionName")
+                }
+            }
+        }
+    }
+}
+
+// afterEvaluate 后再依赖，确保 Android 插件已完成 assembleDebug 任务注册
+afterEvaluate {
+    tasks.named("assembleDebug") {
+        dependsOn("replaceReadmeVersion")
+    }
+    tasks.named("assembleRelease") {
+        dependsOn("replaceReadmeVersion")
+    }
 }

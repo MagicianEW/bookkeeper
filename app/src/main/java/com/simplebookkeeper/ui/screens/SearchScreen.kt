@@ -22,6 +22,8 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
+private val searchDateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SearchScreen(
@@ -44,8 +46,6 @@ fun SearchScreen(
     var startDate by remember { mutableStateOf<Date?>(null) }
     var endDate by remember { mutableStateOf<Date?>(null) }
     var hasSearched by remember { mutableStateOf(false) }
-
-    val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
 
     Column(modifier = Modifier.fillMaxSize()) {
         // 标题
@@ -251,7 +251,7 @@ fun SearchScreen(
                 TextButton(onClick = {
                     state.selectedDateMillis?.let {
                         startDate = Date(it)
-                        startDateText = dateFormat.format(startDate!!)
+                        startDateText = searchDateFormat.format(startDate!!)
                     }
                     showStartPicker = false
                 }) { Text(stringResource(R.string.confirm)) }
@@ -268,7 +268,7 @@ fun SearchScreen(
                 TextButton(onClick = {
                     state.selectedDateMillis?.let {
                         endDate = Date(it)
-                        endDateText = dateFormat.format(endDate!!)
+                        endDateText = searchDateFormat.format(endDate!!)
                     }
                     showEndPicker = false
                 }) { Text(stringResource(R.string.confirm)) }

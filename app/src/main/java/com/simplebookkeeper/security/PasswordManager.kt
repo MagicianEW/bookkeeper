@@ -14,6 +14,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import java.security.MessageDigest
+import java.math.BigInteger
 import java.security.SecureRandom
 import javax.crypto.Cipher
 import javax.crypto.SecretKey
@@ -242,10 +243,13 @@ class PasswordManager(private val context: Context) {
         bytes.joinToString("") { "%02x".format(it) }
 
     private fun hexToBytes(hex: String): ByteArray {
-        val bytes = ByteArray(hex.length / 2)
-        for (i in bytes.indices) {
-            bytes[i] = Integer.parseInt(hex.substring(i * 2, i * 2 + 2), 16).toByte()
+        return BigInteger(hex, 16).toByteArray().let { bytes ->
+            // BigInteger may prepend a 0 byte for positive numbers; strip it
+            if (bytes.size == hex.length / 2 + 1 && bytes[0] == 0.toByte()) {
+                bytes.copyOfRange(1, bytes.size)
+            } else {
+                bytes
+            }
         }
-        return bytes
     }
 }

@@ -28,8 +28,15 @@ class SyncViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             try {
                 val tempFile = File(app.cacheDir, "sync_export.zip")
-                val exportPassword = if (app.passwordManager.isPasswordEnabled.first()) {
-                    password ?: app.passwordManager.getPlainPassword()
+                val isPasswordEnabled = app.passwordManager.isPasswordEnabled.first()
+                val exportPassword = if (isPasswordEnabled) {
+                    val stored = password ?: app.passwordManager.getPlainPassword()
+                    if (stored == null) {
+                        // 密码存储损坏，无法安全同步，终止操作
+                        onResult(SyncResult.Error(app.getString(R.string.sync_password_unavailable)))
+                        return@launch
+                    }
+                    stored
                 } else null
                 val success = DataExporter.exportToZip(app, tempFile, exportPassword)
                 if (success) {

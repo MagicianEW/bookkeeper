@@ -2,11 +2,13 @@ package com.simplebookkeeper.data
 
 import android.content.Context
 import com.simplebookkeeper.data.model.Category
+import com.simplebookkeeper.data.model.PaymentMethodEntity
 import com.simplebookkeeper.data.model.Saving
 import com.simplebookkeeper.data.model.Transaction
 import com.simplebookkeeper.util.AppLogger
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import androidx.room.withTransaction
 import net.lingala.zip4j.ZipFile
 import net.lingala.zip4j.model.ZipParameters
 import net.lingala.zip4j.model.enums.AesKeyStrength
@@ -22,8 +24,9 @@ import java.io.InputStreamReader
  * ZIP 包结构（始终为明文 CSV，加密在 ZIP 层）：
  *   meta.json          ← {"encrypted": true/false, "version": 1}
  *   categories.csv     ← id,name,type,icon,isDefault,sortOrder
- *   transactions.csv   ← id,type,amount,categoryId,paymentMethod,note,date,createdAt,updatedAt
+ *   transactions.csv   ← id,type,amount,categoryId,paymentMethod,customPaymentMethod,note,date,createdAt,updatedAt
  *   savings.csv        ← id,type,amount,note,date,createdAt,updatedAt
+ *   payment_methods.csv ← id,name,type,isDefault
  *
  * 加密方式：Zip4j AES-256（标准 ZIP 加密，解压时需输入密码）
  * 不加密时：普通 ZIP，可直接解压查看 CSV
@@ -35,6 +38,7 @@ object DataExporter {
     private const val CATEGORIES_CSV = "categories.csv"
     private const val TRANSACTIONS_CSV = "transactions.csv"
     private const val SAVINGS_CSV = "savings.csv"
+    private const val PAYMENT_METHODS_CSV = "payment_methods.csv"
 
     // ─── 导出 ─────────────────────────────────────────────────
 
@@ -56,8 +60,9 @@ object DataExporter {
                 val categories = dbManager.categoryDao.getAllSync()
                 val transactions = dbManager.transactionDao.getAll()
                 val savings = dbManager.savingDao.getAllSync()
+                val paymentMethods = dbManager.paymentMethodDao.getAllSync()
 
-                AppLogger.i(TAG, "导出: ${categories.size} 分类, ${transactions.size} 交易, ${savings.size} 储蓄")
+                AppLogger.i(TAG, "导出: ${categories.size} 分类, ${transactions.size} 交易, ${savings.size} 储蓄, ${paymentMethods.size} 支付方式")
 
                 // 删除旧文件，Zip4j 不接受已存在的文件（会抛异常）
                 if (outputFile.exists()) outputFile.delete()
@@ -74,6 +79,7 @@ object DataExporter {
                 val categoriesCsv = writeCategoriesToCsv(categories).toByteArray(Charsets.UTF_8)
                 val transactionsCsv = writeTransactionsToCsv(transactions).toByteArray(Charsets.UTF_8)
                 val savingsCsv = writeSavingsToCsv(savings).toByteArray(Charsets.UTF_8)
+                val paymentMethodsCsv = writePaymentMethodsToCsv(paymentMethods).toByteArray(Charsets.UTF_8)
 
                 if (isEncrypted) {
                     // 使用 Zip4j AES-256 加密
@@ -97,6 +103,9 @@ object DataExporter {
                     params.fileNameInZip = SAVINGS_CSV
                     zipFile.addStream(ByteArrayInputStream(savingsCsv), params)
 
+                    params.fileNameInZip = PAYMENT_METHODS_CSV
+                    zipFile.addStream(ByteArrayInputStream(paymentMethodsCsv), params)
+
                 } else {
                     // 普通 ZIP，无加密
                     val zipFile = ZipFile(outputFile)
@@ -113,6 +122,9 @@ object DataExporter {
 
                     params.fileNameInZip = SAVINGS_CSV
                     zipFile.addStream(ByteArrayInputStream(savingsCsv), params)
+
+                    params.fileNameInZip = PAYMENT_METHODS_CSV
+                    zipFile.addStream(ByteArrayInputStream(paymentMethodsCsv), params)
                 }
 
                 AppLogger.i(TAG, "导出完成: ${outputFile.length()} bytes, encrypted=$isEncrypted")
@@ -172,21 +184,29 @@ object DataExporter {
                 val categories = readCsvFromZip(zip, CATEGORIES_CSV)?.let { parseCategoriesCsv(it) } ?: emptyList()
                 val transactions = readCsvFromZip(zip, TRANSACTIONS_CSV)?.let { parseTransactionsCsv(it) } ?: emptyList()
                 val savings = readCsvFromZip(zip, SAVINGS_CSV)?.let { parseSavingsCsv(it) } ?: emptyList()
+                val paymentMethods = readCsvFromZip(zip, PAYMENT_METHODS_CSV)?.let { parsePaymentMethodsCsv(it) } ?: emptyList()
 
-                AppLogger.i(TAG, "导入: ${categories.size} 分类, ${transactions.size} 交易, ${savings.size} 储蓄")
+                AppLogger.i(TAG, "导入: ${categories.size} 分类, ${transactions.size} 交易, ${savings.size} 储蓄, ${paymentMethods.size} 支付方式")
 
-                // 写入数据库
-                if (categories.isNotEmpty()) {
-                    dbManager.categoryDao.deleteAll()
-                    dbManager.categoryDao.insertAll(categories)
-                }
-                if (transactions.isNotEmpty()) {
-                    dbManager.transactionDao.deleteAll()
-                    transactions.forEach { dbManager.transactionDao.insert(it) }
-                }
-                if (savings.isNotEmpty()) {
-                    dbManager.savingDao.deleteAll()
-                    savings.forEach { dbManager.savingDao.insert(it) }
+                // 写入数据库（事务保护，防止部分写入）
+                dbManager.db.withTransaction {
+                    if (categories.isNotEmpty()) {
+                        dbManager.categoryDao.deleteAll()
+                        dbManager.categoryDao.insertAll(categories)
+                    }
+                    if (transactions.isNotEmpty()) {
+                        dbManager.transactionDao.deleteAll()
+                        transactions.forEach { dbManager.transactionDao.insert(it) }
+                    }
+                    if (savings.isNotEmpty()) {
+                        dbManager.savingDao.deleteAll()
+                        savings.forEach { dbManager.savingDao.insert(it) }
+                    }
+                    if (paymentMethods.isNotEmpty()) {
+                        // 清理旧的自定义方式，保留预置方式
+                        dbManager.paymentMethodDao.deleteAllCustom()
+                        paymentMethods.forEach { dbManager.paymentMethodDao.insert(it) }
+                    }
                 }
 
                 dbManager.resetForReEncryption()
@@ -243,9 +263,9 @@ object DataExporter {
 
     private fun writeTransactionsToCsv(transactions: List<Transaction>): String {
         val sb = StringBuilder()
-        sb.appendLine("id,type,amount,categoryId,paymentMethod,note,date,createdAt,updatedAt")
+        sb.appendLine("id,type,amount,categoryId,paymentMethod,customPaymentMethod,note,date,createdAt,updatedAt")
         for (t in transactions) {
-            sb.appendLine("${t.id},${t.type.name},${t.amount},${t.categoryId},${t.paymentMethod.name},${escapeCsv(t.note)},${t.date.time},${t.createdAt},${t.updatedAt}")
+            sb.appendLine("${t.id},${t.type.name},${t.amount},${t.categoryId},${t.paymentMethod.name},${escapeCsv(t.customPaymentMethod ?: "")},${escapeCsv(t.note)},${t.date.time},${t.createdAt},${t.updatedAt}")
         }
         return sb.toString()
     }
@@ -255,6 +275,15 @@ object DataExporter {
         sb.appendLine("id,type,amount,note,date,createdAt,updatedAt")
         for (s in savings) {
             sb.appendLine("${s.id},${s.type.name},${s.amount},${escapeCsv(s.note)},${s.date.time},${s.createdAt},${s.updatedAt}")
+        }
+        return sb.toString()
+    }
+
+    private fun writePaymentMethodsToCsv(methods: List<PaymentMethodEntity>): String {
+        val sb = StringBuilder()
+        sb.appendLine("id,name,type,isDefault")
+        for (m in methods) {
+            sb.appendLine("${m.id},${escapeCsv(m.name)},${m.type.name},${if (m.isDefault) 1 else 0}")
         }
         return sb.toString()
     }
@@ -298,10 +327,11 @@ object DataExporter {
                     amount = fields[2].toLongOrNull() ?: continue,
                     categoryId = fields[3].toLongOrNull() ?: continue,
                     paymentMethod = try { com.simplebookkeeper.data.model.PaymentMethod.valueOf(fields[4]) } catch (_: Exception) { continue },
-                    note = fields[5],
-                    date = java.util.Date(fields[6].toLongOrNull() ?: continue),
-                    createdAt = fields[7].toLongOrNull() ?: continue,
-                    updatedAt = fields[8].toLongOrNull() ?: continue
+                    customPaymentMethod = fields[5].ifBlank { null },
+                    note = fields[6],
+                    date = java.util.Date(fields[7].toLongOrNull() ?: continue),
+                    createdAt = fields[8].toLongOrNull() ?: continue,
+                    updatedAt = if (fields.size > 9) fields[9].toLongOrNull() ?: continue else continue
                 ))
             } catch (e: Exception) {
                 AppLogger.w(TAG, "解析交易行失败: ${lines[i]}", e)
@@ -329,6 +359,27 @@ object DataExporter {
                 ))
             } catch (e: Exception) {
                 AppLogger.w(TAG, "解析储蓄行失败: ${lines[i]}", e)
+            }
+        }
+        return result
+    }
+
+    private fun parsePaymentMethodsCsv(csv: String): List<PaymentMethodEntity> {
+        val lines = csv.lines().filter { it.isNotBlank() }
+        if (lines.size <= 1) return emptyList()
+        val result = mutableListOf<PaymentMethodEntity>()
+        for (i in 1 until lines.size) {
+            val fields = parseCsvLine(lines[i])
+            if (fields.size < 4) continue
+            try {
+                result.add(PaymentMethodEntity(
+                    id = fields[0].toLongOrNull() ?: 0,
+                    name = fields[1],
+                    type = try { com.simplebookkeeper.data.model.TransactionType.valueOf(fields[2]) } catch (_: Exception) { continue },
+                    isDefault = fields[3] == "1"
+                ))
+            } catch (e: Exception) {
+                AppLogger.w(TAG, "解析支付方式行失败: ${lines[i]}", e)
             }
         }
         return result

@@ -24,6 +24,7 @@ data class Transaction(
     val amount: Long,             // 金额（单位：分），正数
     val categoryId: Long,           // 分类ID
     val paymentMethod: PaymentMethod = PaymentMethod.CASH,
+    val customPaymentMethod: String? = null, // 用户自定义方式名称（不为空时优先显示）
     val note: String = "",          // 备注
     val date: Date = Date(),        // 日期
     val createdAt: Long = System.currentTimeMillis(),

@@ -14,6 +14,7 @@
     <string name="cancel">取消</string>
     <string name="confirm">確定</string>
     <string name="save">儲存</string>
+    <string name="record_type">類型</string>
     <string name="income">收入</string>
     <string name="expense">支出</string>
     <string name="balance">結餘</string>
@@ -72,6 +73,20 @@
     <string name="add_record_title">記帳</string>
     <string name="edit_record_title">編輯記錄</string>
     <string name="payment_method">付款方式</string>
+    <string name="collection_method">收款方式</string>
+    <string name="payment_method_management">管理收/付款方式</string>
+    <string name="collection_method_management">管理收款方式</string>
+    <string name="add_payment_method">添加收/付款方式</string>
+    <string name="add_payment_method_subtitle">新增自訂支付或收款方式</string>
+    <string name="add_collection_method">添加收款方式</string>
+    <string name="payment_method_name">方式名稱</string>
+    <string name="name_cannot_be_empty">名稱不能為空</string>
+    <string name="delete_payment_method_confirm">確定刪除該方式嗎？</string>
+    <string name="delete_payment_method_confirm_title">刪除支付方式</string>
+    <string name="payment_method_already_exists">該方式已存在</string>
+    <string name="manage_payment_methods">管理支付方式</string>
+    <string name="manage_collection_methods">管理收款方式</string>
+    <string name="unknown_method">未知方式</string>
     <string name="delete_record_title">刪除記錄</string>
     <string name="date_format">yyyy年MM月dd日</string>
 
@@ -127,7 +142,7 @@
     <string name="import_success">✅ 匯入成功，請重啟應用以完成資料遷移</string>
     <string name="import_failed">❌ 匯入失敗，檔案格式不正確</string>
     <string name="new_password">新密碼（至少4位）</string>
-    <string name="password_min_length">密碼至少4位</string>
+    <string name="password_min_length">密碼至少6位</string>
     <string name="confirm_password">確認密碼</string>
     <string name="password_mismatch">兩次密碼不一致</string>
     <string name="enter_password_to_disable_biometric">請輸入密碼以關閉生物識別</string>
@@ -135,7 +150,7 @@
 
     <!-- 密碼設定 -->
     <string name="set_password_title">設定密碼</string>
-    <string name="password_hint">密碼（至少4位）</string>
+    <string name="password_hint">密碼</string>
     <string name="show_password">顯示密碼</string>
     <string name="skip_password_title">跳過密碼設定？</string>
     <string name="skip_password_warning">無法從雲端恢復加密的資料</string>
@@ -171,7 +186,9 @@
     <string name="card">銀行卡</string>
     <string name="alipay">支付寶</string>
     <string name="wechat">微信</string>
+    <string name="credit_card">信用卡</string>
     <string name="other">其他</string>
+    <string name="add_custom_method">添加自定義</string>
 
     <!-- 記錄編輯頁（補充） -->
     <string name="back">返回</string>
@@ -233,6 +250,7 @@
     <!-- 同步狀態 -->
     <string name="sync_upload_failed">上傳失敗</string>
     <string name="sync_export_failed">匯出失敗</string>
+    <string name="sync_password_unavailable">密碼存儲不可用，請重新設定應用鎖密碼後重試</string>
     <string name="sync_error">同步異常</string>
     <string name="sync_import_failed">匯入失敗</string>
     <string name="sync_download_failed">下載失敗</string>

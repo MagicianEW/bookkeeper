@@ -14,8 +14,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.simplebookkeeper.R
 import com.simplebookkeeper.data.model.SavingType
+import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
+import java.util.Locale
+
+private val savingDialogDateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -88,7 +92,7 @@ fun AddSavingDialog(
                 Spacer(modifier = Modifier.height(8.dp))
 
                 OutlinedTextField(
-                    value = "${year}-${(month + 1).toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}",
+                    value = savingDialogDateFormat.format(Calendar.getInstance().apply { set(year, month, day) }.time),
                     onValueChange = {},
                     label = { Text(stringResource(R.string.date)) },
                     readOnly = true,

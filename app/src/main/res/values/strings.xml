@@ -14,6 +14,7 @@
     <string name="cancel">取消</string>
     <string name="confirm">确定</string>
     <string name="save">保存</string>
+    <string name="record_type">类型</string>
     <string name="income">收入</string>
     <string name="expense">支出</string>
     <string name="balance">结余</string>
@@ -72,6 +73,20 @@
     <string name="add_record_title">记账</string>
     <string name="edit_record_title">编辑记录</string>
     <string name="payment_method">付款方式</string>
+    <string name="collection_method">收款方式</string>
+    <string name="payment_method_management">管理收/付款方式</string>
+    <string name="collection_method_management">管理收款方式</string>
+    <string name="add_payment_method">添加收/付款方式</string>
+    <string name="add_payment_method_subtitle">新增自定义支付或收款方式</string>
+    <string name="add_collection_method">添加收款方式</string>
+    <string name="payment_method_name">方式名称</string>
+    <string name="name_cannot_be_empty">名称不能为空</string>
+    <string name="delete_payment_method_confirm">确定删除该方式吗？</string>
+    <string name="delete_payment_method_confirm_title">删除支付方式</string>
+    <string name="payment_method_already_exists">该方式已存在</string>
+    <string name="manage_payment_methods">管理支付方式</string>
+    <string name="manage_collection_methods">管理收款方式</string>
+    <string name="unknown_method">未知方式</string>
     <string name="delete_record_title">删除记录</string>
     <string name="date_format">yyyy年MM月dd日</string>
 
@@ -127,7 +142,7 @@
     <string name="import_success">✅ 导入成功，请重启应用以完成数据迁移</string>
     <string name="import_failed">❌ 导入失败，文件格式不正确</string>
     <string name="new_password">新密码（至少4位）</string>
-    <string name="password_min_length">密码至少4位</string>
+    <string name="password_min_length">密码至少6位</string>
     <string name="confirm_password">确认密码</string>
     <string name="password_mismatch">两次密码不一致</string>
     <string name="enter_password_to_disable_biometric">请输入密码以关闭生物识别</string>
@@ -135,7 +150,7 @@
 
     <!-- 密码设置 -->
     <string name="set_password_title">设置密码</string>
-    <string name="password_hint">密码（至少4位）</string>
+    <string name="password_hint">密码</string>
     <string name="show_password">显示密码</string>
     <string name="skip_password_title">跳过密码设置？</string>
     <string name="skip_password_warning">无法从云端恢复加密的数据</string>
@@ -171,7 +186,9 @@
     <string name="card">银行卡</string>
     <string name="alipay">支付宝</string>
     <string name="wechat">微信</string>
+    <string name="credit_card">信用卡</string>
     <string name="other">其他</string>
+    <string name="add_custom_method">添加自定义</string>
 
     <!-- 记录编辑页（补充） -->
     <string name="back">返回</string>
@@ -233,6 +250,7 @@
     <!-- 同步状态 -->
     <string name="sync_upload_failed">上传失败</string>
     <string name="sync_export_failed">导出失败</string>
+    <string name="sync_password_unavailable">密码存储不可用，请重新设置应用锁密码后重试</string>
     <string name="sync_error">同步异常</string>
     <string name="sync_import_failed">导入失败</string>
     <string name="sync_download_failed">下载失败</string>

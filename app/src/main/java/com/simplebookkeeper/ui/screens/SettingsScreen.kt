@@ -31,6 +31,7 @@ import com.simplebookkeeper.BookkeeperApp
 import com.simplebookkeeper.R
 import com.simplebookkeeper.data.DataExporter
 import com.simplebookkeeper.data.model.Category
+import com.simplebookkeeper.data.model.PaymentMethodEntity
 import com.simplebookkeeper.data.model.TransactionType
 import com.simplebookkeeper.data.repository.WebDavConfig
 import com.simplebookkeeper.sync.SyncResult
@@ -103,6 +104,20 @@ fun SettingsScreen(
     var isSyncing by remember { mutableStateOf(false) }
 
     val allCategories by viewModel.allCategories.collectAsState()
+
+    // 自定义支付/收款方式列表
+    var customPaymentMethods by remember { mutableStateOf<List<PaymentMethodEntity>>(emptyList()) }
+    var showDeleteMethodDialog by remember { mutableStateOf<PaymentMethodEntity?>(null) }
+    var showAddMethodDialog by remember { mutableStateOf(false) }
+    var newMethodName by remember { mutableStateOf("") }
+    var methodAddError by remember { mutableStateOf("") }
+    var newMethodType by remember { mutableStateOf(TransactionType.EXPENSE) }
+
+    LaunchedEffect(Unit) {
+        viewModel.paymentMethodRepository.getAll().collect { list ->
+            customPaymentMethods = list.filter { !it.isDefault }
+        }
+    }
 
     // 导出文件选择器（导出为 CSV 压缩包）
     val exportLauncher = rememberLauncherForActivityResult(
@@ -471,6 +486,23 @@ fun SettingsScreen(
                     onDelete = { viewModel.deleteCategory(category) }
                 )
             }
+
+            // ——— 支付/收款方式管理 ———
+            item { SettingsSectionHeader(stringResource(R.string.payment_method_management)) }
+            item {
+                SettingsItem(
+                    icon = Icons.Default.Add,
+                    title = stringResource(R.string.add_payment_method),
+                    subtitle = stringResource(R.string.add_payment_method_subtitle),
+                    onClick = { showAddMethodDialog = true }
+                )
+            }
+            items(customPaymentMethods) { method ->
+                PaymentMethodSettingsItem(
+                    method = method,
+                    onDelete = { showDeleteMethodDialog = method }
+                )
+            }
         }
     }
 
@@ -534,7 +566,7 @@ fun SettingsScreen(
                     OutlinedTextField(
                         value = passwordInput,
                         onValueChange = { passwordInput = it; verifyError = null },
-                        label = { Text(stringResource(R.string.webdav_password)) },
+                        label = { Text(stringResource(R.string.password_hint)) },
                         singleLine = true,
                         isError = verifyError != null,
                         modifier = Modifier.fillMaxWidth(),
@@ -591,6 +623,119 @@ fun SettingsScreen(
     // 关于对话框
     if (showAboutDialog) {
         AboutDialog(onDismiss = { showAboutDialog = false })
+    }
+
+    // 添加自定义方式对话框
+    if (showAddMethodDialog) {
+        val addTitle = stringResource(R.string.add_payment_method)
+        val nameLabel = stringResource(R.string.payment_method_name)
+        val addBtn = stringResource(R.string.add_button)
+        val cancelBtn = stringResource(R.string.cancel)
+        val errorEmpty = stringResource(R.string.name_cannot_be_empty)
+        val errorExists = stringResource(R.string.payment_method_already_exists)
+        val incomeLabel = stringResource(R.string.income)
+        val expenseLabel = stringResource(R.string.expense)
+        var typeExpanded by remember { mutableStateOf(false) }
+        AlertDialog(
+            onDismissRequest = {
+                showAddMethodDialog = false
+                newMethodName = ""
+                methodAddError = ""
+                newMethodType = TransactionType.EXPENSE
+            },
+            title = { Text(addTitle) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    // 类型选择
+                    ExposedDropdownMenuBox(
+                        expanded = typeExpanded,
+                        onExpandedChange = { typeExpanded = !typeExpanded }
+                    ) {
+                        OutlinedTextField(
+                            value = if (newMethodType == TransactionType.INCOME) incomeLabel else expenseLabel,
+                            onValueChange = {},
+                            readOnly = true,
+                            label = { Text(stringResource(R.string.record_type)) },
+                            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = typeExpanded) },
+                            modifier = Modifier.fillMaxWidth().menuAnchor()
+                        )
+                        ExposedDropdownMenu(
+                            expanded = typeExpanded,
+                            onDismissRequest = { typeExpanded = false }
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text(expenseLabel) },
+                                onClick = { newMethodType = TransactionType.EXPENSE; typeExpanded = false }
+                            )
+                            DropdownMenuItem(
+                                text = { Text(incomeLabel) },
+                                onClick = { newMethodType = TransactionType.INCOME; typeExpanded = false }
+                            )
+                        }
+                    }
+                    // 名称输入
+                    OutlinedTextField(
+                        value = newMethodName,
+                        onValueChange = { newMethodName = it; methodAddError = "" },
+                        label = { Text(nameLabel) },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                        isError = methodAddError.isNotEmpty(),
+                        supportingText = if (methodAddError.isNotEmpty()) {
+                            { Text(methodAddError, color = MaterialTheme.colorScheme.error) }
+                        } else null
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        val name = newMethodName.trim()
+                        if (name.isEmpty()) { methodAddError = errorEmpty; return@TextButton }
+                        if (customPaymentMethods.any { it.name == name && it.type == newMethodType }) { methodAddError = errorExists; return@TextButton }
+                        scope.launch {
+                            viewModel.paymentMethodRepository.add(PaymentMethodEntity(name = name, type = newMethodType))
+                            showAddMethodDialog = false
+                            newMethodName = ""
+                            methodAddError = ""
+                            newMethodType = TransactionType.EXPENSE
+                        }
+                    },
+                    enabled = newMethodName.trim().isNotEmpty()
+                ) { Text(addBtn) }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    showAddMethodDialog = false
+                    newMethodName = ""
+                    methodAddError = ""
+                    newMethodType = TransactionType.EXPENSE
+                }) { Text(cancelBtn) }
+            }
+        )
+    }
+
+    // 删除自定义方式确认对话框
+    showDeleteMethodDialog?.let { method ->
+        AlertDialog(
+            onDismissRequest = { showDeleteMethodDialog = null },
+            title = { Text(stringResource(R.string.delete_payment_method_confirm_title)) },
+            text = { Text("${stringResource(R.string.delete_payment_method_confirm)} \"${method.name}\"?") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        scope.launch {
+                            viewModel.paymentMethodRepository.deleteById(method.id)
+                        }
+                        showDeleteMethodDialog = null
+                    },
+                    colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)
+                ) { Text(stringResource(R.string.delete)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteMethodDialog = null }) { Text(stringResource(R.string.cancel)) }
+            }
+        )
     }
 }
 
@@ -685,6 +830,26 @@ fun CategorySettingsItem(category: Category, onDelete: () -> Unit) {
 }
 
 @Composable
+fun PaymentMethodSettingsItem(method: PaymentMethodEntity, onDelete: () -> Unit) {
+    val incomeText = stringResource(R.string.income)
+    val expenseText = stringResource(R.string.expense)
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 28.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            "${method.name} (${if (method.type == TransactionType.INCOME) incomeText else expenseText})",
+            modifier = Modifier.weight(1f)
+        )
+        IconButton(onClick = onDelete) {
+            Icon(Icons.Default.Delete, contentDescription = stringResource(R.string.delete), tint = MaterialTheme.colorScheme.error)
+        }
+    }
+}
+
+@Composable
 fun SetPasswordDialog(onConfirm: (String) -> Unit, onDismiss: () -> Unit) {
     var password by remember { mutableStateOf("") }
     var confirm by remember { mutableStateOf("") }
@@ -725,7 +890,7 @@ fun SetPasswordDialog(onConfirm: (String) -> Unit, onDismiss: () -> Unit) {
         confirmButton = {
             TextButton(onClick = {
                 when {
-                    password.length < 4 -> error = passwordMinLengthError
+                    password.length < 6 -> error = passwordMinLengthError
                     password != confirm -> error = passwordMismatchError
                     else -> onConfirm(password)
                 }

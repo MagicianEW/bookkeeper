@@ -40,7 +40,6 @@ class TransactionRepository(
 
     suspend fun addTransaction(transaction: Transaction): Long {
         val result = dbManager.transactionDao.insert(transaction)
-        refreshAvailableYears() // 新增账目后刷新年份缓存
         return result
     }
 
@@ -49,12 +48,10 @@ class TransactionRepository(
 
     suspend fun deleteTransaction(transaction: Transaction) {
         dbManager.transactionDao.delete(transaction)
-        refreshAvailableYears() // 删除账目后刷新年份缓存
     }
 
     suspend fun deleteTransactionById(id: Long) {
         dbManager.transactionDao.deleteById(id)
-        refreshAvailableYears() // 删除账目后刷新年份缓存
     }
 
     suspend fun getTransactionById(id: Long): Transaction? =

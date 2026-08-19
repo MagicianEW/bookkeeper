@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import com.simplebookkeeper.BookkeeperApp
 import com.simplebookkeeper.data.model.Category
+import com.simplebookkeeper.data.model.PaymentMethodEntity
 import com.simplebookkeeper.data.model.Saving
 import com.simplebookkeeper.data.model.SavingType
 import com.simplebookkeeper.data.model.Transaction
@@ -16,9 +17,10 @@ import java.util.Date
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
 
-    private val transactionVM = TransactionViewModel(application)
-    private val savingsVM = SavingsViewModel(application)
-    private val syncVM = SyncViewModel(application)
+    private val transactionVM by lazy { TransactionViewModel(application) }
+    private val savingsVM by lazy { SavingsViewModel(application) }
+    private val syncVM by lazy { SyncViewModel(application) }
+    val paymentMethodRepository by lazy { (application as BookkeeperApp).paymentMethodRepository }
 
     val displayYear: StateFlow<Int> = transactionVM.displayYear
     val displayMonth: StateFlow<Int> = transactionVM.displayMonth

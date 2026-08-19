@@ -54,10 +54,29 @@ class SettingsRepository(private val context: Context) {
         private val LANGUAGE_MODE = stringPreferencesKey("language_mode")
     }
 
+    // 缓存 EncryptedSharedPreferences 实例，避免每次读取都重新创建
+    private val encryptedWebDavPrefs: SharedPreferences? by lazy {
+        try {
+            val masterKey = MasterKey.Builder(context)
+                .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
+                .build()
+            EncryptedSharedPreferences.create(
+                context,
+                ENCRYPTED_WEBDAV_PREFS_FILE,
+                masterKey,
+                EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+                EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+            )
+        } catch (e: Exception) {
+            AppLogger.e(TAG, "创建加密存储失败", e)
+            null
+        }
+    }
+
     // WebDAV 配置（从加密存储读取，带迁移支持）
     val webDavConfig: Flow<WebDavConfig> = context.settingsDataStore.data.map { prefs ->
         // 检查是否已迁移到加密存储
-        val encryptedPrefs = getEncryptedWebDavPrefs()
+        val encryptedPrefs = encryptedWebDavPrefs
         val migrated = encryptedPrefs?.getBoolean(KEY_MIGRATED, false) ?: false
 
         if (migrated) {
@@ -82,7 +101,7 @@ class SettingsRepository(private val context: Context) {
     // 迁移旧凭证到加密存储（如果尚未迁移）
     private suspend fun migrateToEncryptedStorage() {
         try {
-            val encryptedPrefs = getEncryptedWebDavPrefs() ?: return
+            val encryptedPrefs = encryptedWebDavPrefs ?: return
             if (encryptedPrefs.getBoolean(KEY_MIGRATED, false)) {
                 return // 已在加密存储中
             }
@@ -119,24 +138,6 @@ class SettingsRepository(private val context: Context) {
         }
     }
 
-    private fun getEncryptedWebDavPrefs(): SharedPreferences? {
-        return try {
-            val masterKey = MasterKey.Builder(context)
-                .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
-                .build()
-            EncryptedSharedPreferences.create(
-                context,
-                ENCRYPTED_WEBDAV_PREFS_FILE,
-                masterKey,
-                EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-                EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
-            )
-        } catch (e: Exception) {
-            AppLogger.e(TAG, "创建加密存储失败", e)
-            null
-        }
-    }
-
     val isCloudSyncPromptShown: Flow<Boolean> = context.settingsDataStore.data
         .map { it[CLOUD_SYNC_PROMPT_SHOWN] ?: false }
 
@@ -161,7 +162,7 @@ class SettingsRepository(private val context: Context) {
         migrateToEncryptedStorage()
 
         // 写入加密存储
-        val encryptedPrefs = getEncryptedWebDavPrefs()
+        val encryptedPrefs = encryptedWebDavPrefs
         if (encryptedPrefs != null) {
             encryptedPrefs.edit()
                 .putString(KEY_WEBDAV_URL, config.url)
@@ -185,7 +186,7 @@ class SettingsRepository(private val context: Context) {
 
     suspend fun setWebDavEnabled(enabled: Boolean) {
         // 使用加密存储
-        val encryptedPrefs = getEncryptedWebDavPrefs()
+        val encryptedPrefs = encryptedWebDavPrefs
         if (encryptedPrefs != null && encryptedPrefs.getBoolean(KEY_MIGRATED, false)) {
             encryptedPrefs.edit()
                 .putBoolean(KEY_WEBDAV_ENABLED, enabled)

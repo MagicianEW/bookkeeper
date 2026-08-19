@@ -22,6 +22,8 @@ import com.simplebookkeeper.ui.theme.IncomeGreen
 import java.text.SimpleDateFormat
 import java.util.Locale
 
+private val dateFormat = SimpleDateFormat("MM-dd", Locale.getDefault())
+
 @Composable
 fun TransactionItem(
     transaction: Transaction,
@@ -29,7 +31,6 @@ fun TransactionItem(
     onClick: () -> Unit = {},
     onLongClick: (() -> Unit)? = null
 ) {
-    val dateFormat = SimpleDateFormat("MM-dd", Locale.getDefault())
     val amountColor = if (transaction.type == TransactionType.INCOME) IncomeGreen else ExpenseRed
     val amountPrefix = if (transaction.type == TransactionType.INCOME) "+" else "-"
 

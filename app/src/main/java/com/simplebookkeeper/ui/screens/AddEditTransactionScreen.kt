@@ -17,6 +17,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
@@ -28,6 +29,7 @@ import androidx.compose.ui.unit.sp
 import com.simplebookkeeper.R
 import com.simplebookkeeper.data.model.Category
 import com.simplebookkeeper.data.model.PaymentMethod
+import com.simplebookkeeper.data.model.PaymentMethodEntity
 import com.simplebookkeeper.util.AppLogger
 import com.simplebookkeeper.data.model.Transaction
 import com.simplebookkeeper.data.model.TransactionType
@@ -65,6 +67,12 @@ fun AddEditTransactionScreen(
     var showDeleteDialog by remember { mutableStateOf(false) }
     var isSaving by remember { mutableStateOf(false) }
 
+    // 支付方式状态
+    var selectedCustomMethod by remember { mutableStateOf<String?>(null) }
+    var customMethods by remember { mutableStateOf<List<PaymentMethodEntity>>(emptyList()) }
+    var showAddMethodDialog by remember { mutableStateOf(false) }
+    var newMethodName by remember { mutableStateOf("") }
+
     val listState = rememberLazyListState()
     var noteFieldFocused by remember { mutableStateOf(false) }
     val noteItemIndex = 13
@@ -89,6 +97,7 @@ fun AddEditTransactionScreen(
                 }
                 selectedCategoryId = t.categoryId
                 selectedPayment = t.paymentMethod
+                selectedCustomMethod = t.customPaymentMethod
                 note = t.note
                 selectedDate = t.date
             }
@@ -96,13 +105,25 @@ fun AddEditTransactionScreen(
         }
     }
 
-    val filteredCategories = allCategories.filter { it.type == selectedType }
-    // 仅新增模式下，分类列表加载后自动选第一个；编辑模式已由 LaunchedEffect 回填，不覆盖
-    if (!isEditMode && selectedCategoryId == 0L && filteredCategories.isNotEmpty()) {
-        selectedCategoryId = filteredCategories.first().id
+    // 加载自定义支付/收款方式
+    LaunchedEffect(selectedType) {
+        viewModel.paymentMethodRepository.getByType(selectedType).collect { list ->
+            customMethods = list
+        }
     }
 
-    val dateFormat = SimpleDateFormat(stringResource(R.string.date_format), Locale.getDefault())
+    val filteredCategories = remember(selectedType, allCategories) {
+        allCategories.filter { it.type == selectedType }
+    }
+
+    LaunchedEffect(isEditMode, filteredCategories) {
+        if (!isEditMode && selectedCategoryId == 0L && filteredCategories.isNotEmpty()) {
+            selectedCategoryId = filteredCategories.first().id
+        }
+    }
+
+    val dateFormatString = stringResource(R.string.date_format)
+    val dateFormat = remember(dateFormatString) { SimpleDateFormat(dateFormatString, Locale.getDefault()) }
 
     val titleEdit = stringResource(R.string.edit_record_title)
     val titleAdd = stringResource(R.string.add_record_title)
@@ -266,29 +287,66 @@ fun AddEditTransactionScreen(
             item { Spacer(modifier = Modifier.height(12.dp)) }
 
             item {
-                // 付款方式
-                Text(stringResource(R.string.payment_method), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                // 付款方式 / 收款方式（根据收支类型动态切换）
+                val methodLabel = if (selectedType == TransactionType.INCOME) {
+                    stringResource(R.string.collection_method)
+                } else {
+                    stringResource(R.string.payment_method)
+                }
+                Text(methodLabel, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
 
             item { Spacer(modifier = Modifier.height(8.dp)) }
 
             item {
-                Row(
+                FlowRow(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    listOf(
+                    // 标准方式（现金/微信/支付宝/银行卡，收支通用）
+                    val standardMethods = listOf(
+                        PaymentMethod.CASH to stringResource(R.string.cash),
                         PaymentMethod.WECHAT to stringResource(R.string.wechat),
                         PaymentMethod.ALIPAY to stringResource(R.string.alipay),
-                        PaymentMethod.CASH to stringResource(R.string.cash),
                         PaymentMethod.BANK_CARD to stringResource(R.string.card)
-                    ).forEach { (method, label) ->
+                    )
+                    standardMethods.forEach { (method, label) ->
                         FilterChip(
-                            selected = selectedPayment == method,
-                            onClick = { selectedPayment = method },
+                            selected = selectedPayment == method && selectedCustomMethod == null,
+                            onClick = {
+                                selectedPayment = method
+                                selectedCustomMethod = null
+                            },
                             label = { Text(label, fontSize = 12.sp) }
                         )
                     }
+                    // 自定义方式
+                    // 过滤掉与标准枚举名称重复的自定义方式
+                    val customNamesToHide = setOf(
+                        stringResource(R.string.cash),    // 现金
+                        stringResource(R.string.wechat),  // 微信
+                        stringResource(R.string.alipay),  // 支付宝
+                        stringResource(R.string.card)     // 银行卡
+                    )
+                    customMethods.filterNot { it.name in customNamesToHide }.forEach { custom ->
+                        FilterChip(
+                            selected = selectedCustomMethod == custom.name,
+                            onClick = {
+                                selectedPayment = PaymentMethod.OTHER
+                                selectedCustomMethod = custom.name
+                            },
+                            label = { Text(custom.name, fontSize = 12.sp) }
+                        )
+                    }
+                    // 添加自定义方式
+                    AssistChip(
+                        onClick = { showAddMethodDialog = true },
+                        label = { Text(stringResource(R.string.add_custom_method), fontSize = 12.sp) },
+                        leadingIcon = {
+                            Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
+                        }
+                    )
                 }
             }
 
@@ -328,6 +386,7 @@ fun AddEditTransactionScreen(
                             amount = (amountYuan * 100).toLong(),  // 元 → 分
                             categoryId = selectedCategoryId,
                             paymentMethod = selectedPayment,
+                            customPaymentMethod = selectedCustomMethod,
                             note = note.trim(),
                             date = selectedDate
                         )
@@ -419,6 +478,78 @@ fun AddEditTransactionScreen(
                     showAddCategoryDialog = false
                     newCategoryName = ""
                 }) { Text(stringResource(R.string.cancel)) }
+            }
+        )
+    }
+
+    // 添加自定义方式弹窗
+    if (showAddMethodDialog) {
+        var methodError by remember { mutableStateOf("") }
+        val dialogTitle = if (selectedType == TransactionType.INCOME)
+            stringResource(R.string.add_collection_method)
+        else
+            stringResource(R.string.add_payment_method)
+        val errorEmpty = stringResource(R.string.name_cannot_be_empty)
+        val errorExists = stringResource(R.string.payment_method_already_exists)
+        val labelText = stringResource(R.string.payment_method_name)
+        val addBtn = stringResource(R.string.add_button)
+        val cancelBtn = stringResource(R.string.cancel)
+        val scope = rememberCoroutineScope()
+
+        AlertDialog(
+            onDismissRequest = {
+                showAddMethodDialog = false
+                newMethodName = ""
+                methodError = ""
+            },
+            title = { Text(dialogTitle) },
+            text = {
+                Column {
+                    OutlinedTextField(
+                        value = newMethodName,
+                        onValueChange = { newMethodName = it; methodError = "" },
+                        label = { Text(labelText) },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                        isError = methodError.isNotEmpty(),
+                        supportingText = if (methodError.isNotEmpty()) {
+                            { Text(methodError, color = MaterialTheme.colorScheme.error) }
+                        } else null
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        val name = newMethodName.trim()
+                        if (name.isEmpty()) {
+                            methodError = errorEmpty
+                            return@TextButton
+                        }
+                        val exists = customMethods.any { it.name == name }
+                        if (exists) {
+                            methodError = errorExists
+                            return@TextButton
+                        }
+                        val newMethod = PaymentMethodEntity(name = name, type = selectedType)
+                        scope.launch {
+                            viewModel.paymentMethodRepository.add(newMethod)
+                            selectedPayment = PaymentMethod.OTHER
+                            selectedCustomMethod = name
+                            showAddMethodDialog = false
+                            newMethodName = ""
+                            methodError = ""
+                        }
+                    },
+                    enabled = newMethodName.trim().isNotEmpty()
+                ) { Text(addBtn) }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    showAddMethodDialog = false
+                    newMethodName = ""
+                    methodError = ""
+                }) { Text(cancelBtn) }
             }
         )
     }

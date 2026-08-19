@@ -71,7 +71,10 @@ fun StatisticsScreen(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.Center
         ) {
-            IconButton(onClick = { selectedYear-- }) {
+            IconButton(onClick = {
+                val minYear = 2000
+                if (selectedYear > minYear) selectedYear--
+            }) {
                 Icon(Icons.Default.KeyboardArrowLeft, contentDescription = "上一年")
             }
             Text(
@@ -80,7 +83,10 @@ fun StatisticsScreen(
                 fontSize = 20.sp,
                 modifier = Modifier.padding(horizontal = 24.dp)
             )
-            IconButton(onClick = { selectedYear++ }) {
+            IconButton(onClick = {
+                val maxYear = Calendar.getInstance().get(Calendar.YEAR) + 1
+                if (selectedYear < maxYear) selectedYear++
+            }) {
                 Icon(Icons.Default.KeyboardArrowRight, contentDescription = "下一年")
             }
         }

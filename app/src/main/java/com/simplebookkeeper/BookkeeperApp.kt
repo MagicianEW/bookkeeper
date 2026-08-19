@@ -3,6 +3,7 @@ package com.simplebookkeeper
 import android.app.Application
 import androidx.work.Configuration
 import com.simplebookkeeper.data.DatabaseManager
+import com.simplebookkeeper.data.repository.PaymentMethodRepository
 import com.simplebookkeeper.data.repository.SavingRepository
 import com.simplebookkeeper.data.repository.SettingsRepository
 import com.simplebookkeeper.data.repository.TransactionRepository
@@ -29,6 +30,11 @@ class BookkeeperApp : Application(), Configuration.Provider {
     /** 储蓄仓库 */
     val savingRepository by lazy {
         SavingRepository(dbManager.savingDao)
+    }
+
+    /** 支付/收款方式仓库 */
+    val paymentMethodRepository by lazy {
+        PaymentMethodRepository(dbManager.paymentMethodDao)
     }
 
     /** 设置仓库 */

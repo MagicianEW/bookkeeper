@@ -22,6 +22,8 @@ import com.simplebookkeeper.viewmodel.MainViewModel
 import java.text.SimpleDateFormat
 import java.util.*
 
+private val savingsDateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SavingsScreen(viewModel: MainViewModel) {
@@ -33,7 +35,7 @@ fun SavingsScreen(viewModel: MainViewModel) {
 
     // 按日分组
     val groupedSavings = savings.groupBy { saving ->
-        SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(saving.date)
+        savingsDateFormat.format(saving.date)
     }
 
     Box(modifier = Modifier.fillMaxSize()) {

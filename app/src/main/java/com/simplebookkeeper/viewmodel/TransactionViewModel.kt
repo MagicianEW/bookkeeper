@@ -129,9 +129,13 @@ class TransactionViewModel(application: Application) : AndroidViewModel(applicat
         keyword: String? = null
     ) {
         viewModelScope.launch {
-            _searchState.value = _searchState.value.copy(isSearching = true)
+            _searchState.value = SearchUiState(isSearching = true)
             try {
                 repo.search(startDate, endDate, minAmount, maxAmount, type, categoryId, keyword)
+                    .catch { e ->
+                        AppLogger.e("TransactionViewModel", "搜索失败", e)
+                        emit(emptyList())
+                    }
                     .collect { results ->
                         _searchState.value = SearchUiState(results = results, isSearching = false)
                     }

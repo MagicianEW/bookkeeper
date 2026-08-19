@@ -57,6 +57,7 @@ class DatabaseManager(private val context: Context) {
     val categoryDao: CategoryDao get() = _db.categoryDao()
     val transactionDao: TransactionDao get() = _db.transactionDao()
     val savingDao: SavingDao get() = _db.savingDao()
+    val paymentMethodDao: com.simplebookkeeper.data.dao.PaymentMethodDao get() = _db.paymentMethodDao()
 
     val dbFile: File get() = context.getDatabasePath(AppDatabase.DB_NAME)
 
@@ -86,8 +87,8 @@ class DatabaseManager(private val context: Context) {
     /**
      * 获取所有年份（从 transactions 表中 SQL 查询）
      */
-    fun getAllYears(): List<Int> {
-        return try {
+    suspend fun getAllYears(): List<Int> = withContext(Dispatchers.IO) {
+        try {
             val db = _db.openHelper.readableDatabase
             val cursor = db.query(
                 "SELECT DISTINCT strftime('%Y', date/1000, 'unixepoch', 'localtime') AS year FROM transactions"
