@@ -18,26 +18,29 @@
 
 ### 🏦 Savings
 - Dedicated savings module to track actual bank deposits
-- Support deposits and withdrawals; auto-calculate totals and yearly savings trends
-- Annual savings = Total deposits - Total withdrawals
+- Support deposits and withdrawals; auto-calculate the balance
+- Withdrawals cannot exceed the current balance
+- _Planned: yearly savings trend chart_
 
 ### 📊 Statistics
-- Monthly income/expense summary with category breakdown charts
-- Annual view: income, expenses, balance, and savings
-- Tap chart items to view detailed records
+- Annual view: income, expenses, and balance
+- Year switching is constrained to years that actually contain data
+- Lists all records for the selected year; tap to jump to edit
+- _Planned: monthly summary, category breakdown charts, annual savings, chart drill-down_
 
 ### 🔍 Search
 - Four-dimensional fuzzy search: date range + amount range + category + note keywords
+- Horizontally scrollable category filter covering all custom categories
 - Real-time results; tap to jump to edit
 
 ### 🌐 Multi-Language
 - Supports Simplified Chinese, Traditional Chinese, and English
-- Follow system / manual switch, takes effect immediately
-- All UI text fully internationalized
+- Follow system / manual switch
+- All UI text is internationalized (including the payment method shown per record)
+- _A restart is required after switching languages_
 
 ### 🎨 Appearance
 - Light / Dark / Follow System theme modes
-- Material You dynamic color
 - Adaptive layout: phone (bottom navigation) + tablet (side NavigationRail)
 
 ### ⚙️ Settings
@@ -46,7 +49,8 @@
 | Password Protection | Set a 4+ digit/letter password; required on next launch |
 | Biometric Auth | Fingerprint / face unlock (auto-hidden if hardware unsupported); password required to disable |
 | Database Encryption | SQLCipher AES-256 full-database encryption; keys managed by Android Keystore |
-| WebDAV Cloud Sync | Configure your private cloud server for automatic database backup |
+| WebDAV Cloud Sync | Configure your private cloud server for automatic ledger backup (HTTP / HTTPS supported) |
+| WebDAV Security | Server certificates are strictly verified by default; self-signed certificates require explicitly enabling trust. Plain HTTP is allowed but transmits credentials in cleartext, and the UI warns when it is used |
 | Data Export/Import | Encrypted ZIP format; supports full data migration; password unified with app lock |
 | Export Logs | Export runtime logs for troubleshooting sync issues |
 | Category Management | View / delete custom categories |
@@ -71,16 +75,19 @@
 Uses the **WebDAV protocol**, compatible with major private cloud services (Nextcloud, Nutstore, Synology, etc.).
 
 **Sync mechanism:**
-1. Automatically runs `PRAGMA wal_checkpoint(TRUNCATE)` before upload to ensure data integrity
-2. Creates a temporary copy before uploading to prevent mid-upload modifications
-3. **Compares file content MD5 hashes** for precise change detection
-4. Prompts on conflict — user chooses which version to keep
-5. Supports WorkManager scheduled background sync (every 15 minutes)
+1. An upload is triggered after every ledger change (rapid saves are coalesced)
+2. Before uploading, the current ledger is exported to a ZIP and the previous cloud file is renamed to a dated history copy
+3. Up to 4 history versions plus 1 current version are kept in the cloud
+4. Supports WorkManager scheduled background sync (every 15 minutes)
+5. Supports both HTTP and HTTPS; with HTTPS, server certificates are strictly verified by default and self-signed certificates require explicitly enabling trust in the config
+
+> ⚠️ This is currently a **one-way backup**: an upload overwrites the cloud file without diffing. With multiple devices, background sync may overwrite data another device just uploaded.
+> _Planned: content-hash diffing, conflict prompt, and manual choice of which side to keep_
 
 **Configuration path:** Settings → WebDAV Sync → Configure server address, username, password
 
 **Data export format:**
-- ZIP archive containing database file and meta.json
+- ZIP archive containing CSV files per data table and meta.json
 - Optional AES-256 encryption; encryption password unified with app lock
 - Supports import/restore; compatible with cross-device data migration
 
