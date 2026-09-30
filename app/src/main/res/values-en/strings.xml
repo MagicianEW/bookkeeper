@@ -233,6 +233,8 @@
     <string name="export_log_subtitle">Export runtime logs as text file for analysis</string>
     <string name="configure_webdav_subtitle">Set server address and credentials</string>
     <string name="sync_complete">Sync complete</string>
+    <string name="sync_success">✅ Sync successful</string>
+    <string name="sync_failed">Sync failed: %1$s</string>
     <string name="close">Close</string>
     <string name="about_privacy">All data is stored locally. Your privacy is protected.</string>
     <string name="configured_prefix">Configured: %1$s</string>
@@ -254,4 +256,34 @@
     <string name="sync_error">Sync error</string>
     <string name="sync_import_failed">Import failed</string>
     <string name="sync_download_failed">Download failed</string>
+    <string name="sync_remote_not_found">No data in cloud storage</string>
+
+    <!-- Accessibility labels (month / year navigation) -->
+    <string name="prev_month">Previous month</string>
+    <string name="next_month">Next month</string>
+    <string name="prev_year">Previous year</string>
+    <string name="next_year">Next year</string>
+
+    <!-- WebDAV connection error hints -->
+    <string name="sync_cert_unverified_hint">The server certificate could not be verified. If you use a self-signed certificate, enable \"Trust self-signed certificates\" in this config and retry. Note: once enabled, the connection is no longer protected against man-in-the-middle attacks.</string>
+    <string name="sync_cert_invalid_hint">The server certificate is invalid. If you use a self-signed certificate, enable \"Trust self-signed certificates\" in this config and retry.</string>
+    <string name="sync_conn_reset_hint">Connection reset by the server. Check the server address, or try using HTTPS.</string>
+    <string name="sync_conn_refused_hint">Connection refused. Check the server address and port.</string>
+    <string name="sync_timeout_hint">Connection timed out. Check your network or the server address.</string>
+    <string name="sync_cleartext_warning">This address uses plain HTTP: your account credentials and ledger files are transmitted in cleartext and could be intercepted by others on the same network. Using HTTPS is recommended.</string>
+
+    <!-- WebDAV security option -->
+    <string name="allow_self_signed_title">Trust self-signed certificates</string>
+    <string name="allow_self_signed_desc">When off, the server certificate is strictly verified. When on, the certificate chain and hostname are no longer verified, so an attacker on the same network could intercept your account credentials and ledger files. Enable only if you fully understand the risk.</string>
+    <string name="allow_self_signed_confirm_title">Trust self-signed certificates?</string>
+    <string name="allow_self_signed_confirm_msg">Once enabled, this app will no longer verify the server certificate. An attacker on the same network could then intercept and tamper with your WebDAV traffic, exposing your credentials and ledger data.\n\nAfter confirming the server address matches your private cloud, continue?</string>
+    <string name="allow_self_signed_confirm_yes">I understand the risk, enable it</string>
+
+    <!-- Category deletion confirmation -->
+    <string name="delete_category_confirm_title">Delete category</string>
+    <string name="delete_category_in_use">This category still has %1$d records. After deletion they will show as \"%2$s\"; amounts and statistics are unaffected.</string>
+
+    <!-- Payment method subtitle inside a ledger row -->
+    <string name="payment_method_short">Paid: %1$s</string>
+    <string name="collection_method_short">Received: %1$s</string>
 </resources>

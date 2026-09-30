@@ -67,9 +67,8 @@ fun SettingsScreen(
     val connectionFailedMsgTemplate = stringResource(R.string.connection_failed_message)
     val connectionSuccessText = stringResource(R.string.connection_success)
     val configSavedText = stringResource(R.string.config_saved)
-    val syncSuccessText = stringResource(R.string.export_success)
-    val syncFailedTemplate = stringResource(R.string.connection_failed_message)
-    val syncCompleteText = stringResource(R.string.sync_complete)
+    val syncSuccessText = stringResource(R.string.sync_success)
+    val syncFailedTemplate = stringResource(R.string.sync_failed)
     val passwordSetSuccessText = stringResource(R.string.password_set_success)
     val passwordErrorText = stringResource(R.string.password_error)
 
@@ -90,6 +89,10 @@ fun SettingsScreen(
     var webDavUsername by remember(webDavConfig.username) { mutableStateOf(webDavConfig.username) }
     var webDavPassword by remember(webDavConfig.password) { mutableStateOf(webDavConfig.password) }
     var webDavEnabled by remember(webDavConfig.enabled) { mutableStateOf(webDavConfig.enabled) }
+    var webDavAllowSelfSigned by remember(webDavConfig.allowSelfSignedCert) {
+        mutableStateOf(webDavConfig.allowSelfSignedCert)
+    }
+    var showSelfSignedConfirm by remember { mutableStateOf(false) }
 
     // 对话框状态
     var showSetPasswordDialog by remember { mutableStateOf(false) }
@@ -112,6 +115,9 @@ fun SettingsScreen(
     var newMethodName by remember { mutableStateOf("") }
     var methodAddError by remember { mutableStateOf("") }
     var newMethodType by remember { mutableStateOf(TransactionType.EXPENSE) }
+    var showDeleteCategoryDialog by remember { mutableStateOf(false) }
+    var pendingDeleteCategory by remember { mutableStateOf<Category?>(null) }
+    var pendingDeleteCount by remember { mutableIntStateOf(0) }
 
     LaunchedEffect(Unit) {
         viewModel.paymentMethodRepository.getAll().collect { list ->
@@ -351,6 +357,27 @@ fun SettingsScreen(
                                 singleLine = true
                             )
                             Spacer(modifier = Modifier.height(8.dp))
+                            // 明文 HTTP 允许使用（局域网私有云常见），这里只提示不阻断
+                            if (webDavUrl.trim().startsWith("http://", ignoreCase = true)) {
+                                Row(
+                                    verticalAlignment = Alignment.Top,
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Icon(
+                                        Icons.Default.Warning,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.error,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        stringResource(R.string.sync_cleartext_warning),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.error
+                                    )
+                                }
+                            }
+                            Spacer(modifier = Modifier.height(8.dp))
                             OutlinedTextField(
                                 value = webDavUsername,
                                 onValueChange = { webDavUsername = it },
@@ -376,13 +403,44 @@ fun SettingsScreen(
                                     }
                                 }
                             )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            // 自签证书：默认关闭，开启前需二次确认风险
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        stringResource(R.string.allow_self_signed_title),
+                                        style = MaterialTheme.typography.bodyMedium
+                                    )
+                                    Text(
+                                        stringResource(R.string.allow_self_signed_desc),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                                Switch(
+                                    checked = webDavAllowSelfSigned,
+                                    onCheckedChange = { checked ->
+                                        if (checked) {
+                                            showSelfSignedConfirm = true
+                                        } else {
+                                            webDavAllowSelfSigned = false
+                                        }
+                                    }
+                                )
+                            }
                             Spacer(modifier = Modifier.height(12.dp))
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                 OutlinedButton(
                                     onClick = {
                                         isTesting = true
                                         scope.launch {
-                                            val testConfig = WebDavConfig(webDavUrl, webDavUsername, webDavPassword, true)
+                                            val testConfig = WebDavConfig(
+                                                webDavUrl, webDavUsername, webDavPassword, true,
+                                                allowSelfSignedCert = webDavAllowSelfSigned
+                                            )
                                             val result = app.webDavManager.testConnection(testConfig)
                                             syncMessage = if (result.isSuccess) connectionSuccessText else connectionFailedMsgTemplate.format(result.exceptionOrNull()?.message)
                                             isTesting = false
@@ -397,7 +455,10 @@ fun SettingsScreen(
                                     onClick = {
                                         scope.launch {
                                             app.settingsRepository.saveWebDavConfig(
-                                                WebDavConfig(webDavUrl, webDavUsername, webDavPassword, webDavEnabled)
+                                                WebDavConfig(
+                                                    webDavUrl, webDavUsername, webDavPassword,
+                                                    webDavEnabled, webDavAllowSelfSigned
+                                                )
                                             )
                                             syncMessage = configSavedText
                                             showWebDavSection = false
@@ -428,7 +489,6 @@ fun SettingsScreen(
                                 syncMessage = when (result) {
                                     is SyncResult.Success -> syncSuccessText
                                     is SyncResult.Error -> syncFailedTemplate.format(result.message)
-                                    else -> syncCompleteText
                                 }
                                 isSyncing = false
                             }
@@ -483,7 +543,16 @@ fun SettingsScreen(
             items(allCategories.filter { !it.isDefault }) { category ->
                 CategorySettingsItem(
                     category = category,
-                    onDelete = { viewModel.deleteCategory(category) }
+                    onDelete = {
+                        // 删除分类不会删除交易，账目会变成"未知分类"。
+                        // 先告知影响范围，让用户自己决定。
+                        scope.launch {
+                            val count = viewModel.getTransactionCountByCategory(category.id)
+                            pendingDeleteCategory = category
+                            pendingDeleteCount = count
+                            showDeleteCategoryDialog = true
+                        }
+                    }
                 )
             }
 
@@ -623,6 +692,65 @@ fun SettingsScreen(
     // 关于对话框
     if (showAboutDialog) {
         AboutDialog(onDismiss = { showAboutDialog = false })
+    }
+
+    // 开启自签证书需二次确认
+    if (showSelfSignedConfirm) {
+        AlertDialog(
+            onDismissRequest = { showSelfSignedConfirm = false },
+            title = { Text(stringResource(R.string.allow_self_signed_confirm_title)) },
+            text = { Text(stringResource(R.string.allow_self_signed_confirm_msg)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    webDavAllowSelfSigned = true
+                    showSelfSignedConfirm = false
+                    AppLogger.w("SettingsScreen", "用户确认开启自签名证书信任")
+                }) { Text(stringResource(R.string.allow_self_signed_confirm_yes)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { showSelfSignedConfirm = false }) {
+                    Text(stringResource(R.string.cancel))
+                }
+            }
+        )
+    }
+
+    // 删除分类确认（删除不会连带删除交易，需明确告知影响）
+    if (showDeleteCategoryDialog && pendingDeleteCategory != null) {
+        val cat = pendingDeleteCategory!!
+        AlertDialog(
+            onDismissRequest = {
+                showDeleteCategoryDialog = false
+                pendingDeleteCategory = null
+            },
+            title = { Text(stringResource(R.string.delete_category_confirm_title)) },
+            text = {
+                Text(
+                    if (pendingDeleteCount > 0) {
+                        stringResource(
+                            R.string.delete_category_in_use,
+                            pendingDeleteCount,
+                            stringResource(R.string.unknown_category)
+                        )
+                    } else {
+                        stringResource(R.string.delete_record_confirm)
+                    }
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    viewModel.deleteCategory(cat)
+                    showDeleteCategoryDialog = false
+                    pendingDeleteCategory = null
+                }) { Text(stringResource(R.string.delete), color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    showDeleteCategoryDialog = false
+                    pendingDeleteCategory = null
+                }) { Text(stringResource(R.string.cancel)) }
+            }
+        )
     }
 
     // 添加自定义方式对话框

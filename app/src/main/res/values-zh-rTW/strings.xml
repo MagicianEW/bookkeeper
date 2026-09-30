@@ -233,6 +233,8 @@
     <string name="export_log_subtitle">將執行日誌匯出為文字檔案供分析</string>
     <string name="configure_webdav_subtitle">設定伺服器位址和帳號</string>
     <string name="sync_complete">同步完成</string>
+    <string name="sync_success">✅ 同步成功</string>
+    <string name="sync_failed">同步失敗: %1$s</string>
     <string name="close">關閉</string>
     <string name="about_privacy">資料完全儲存在本地，保護您的隱私安全。</string>
     <string name="configured_prefix">已設定: %1$s</string>
@@ -254,4 +256,34 @@
     <string name="sync_error">同步異常</string>
     <string name="sync_import_failed">匯入失敗</string>
     <string name="sync_download_failed">下載失敗</string>
+    <string name="sync_remote_not_found">雲端暫無資料</string>
+
+    <!-- 無障礙文案（月份/年份切換） -->
+    <string name="prev_month">上個月</string>
+    <string name="next_month">下個月</string>
+    <string name="prev_year">上一年</string>
+    <string name="next_year">下一年</string>
+
+    <!-- WebDAV 連線錯誤提示 -->
+    <string name="sync_cert_unverified_hint">無法驗證伺服器憑證。若你使用的是自簽憑證，可在此設定中開啟「信任自簽憑證」後重試。注意：開啟後連線不再防中間人攻擊。</string>
+    <string name="sync_cert_invalid_hint">伺服器憑證無效。若你使用的是自簽憑證，可在此設定中開啟「信任自簽憑證」後重試。</string>
+    <string name="sync_conn_reset_hint">連線被伺服器重設，請檢查伺服器位址是否正確，或嘗試使用 HTTPS</string>
+    <string name="sync_conn_refused_hint">連線被拒絕，請檢查伺服器位址與連接埠是否正確</string>
+    <string name="sync_timeout_hint">連線逾時，請檢查網路或伺服器位址</string>
+    <string name="sync_cleartext_warning">目前位址使用明文 HTTP：帳號密碼與帳目檔案會在網路上以明文傳輸，同一網路的其他人可能竊取。建議改用 HTTPS。</string>
+
+    <!-- WebDAV 安全選項 -->
+    <string name="allow_self_signed_title">信任自簽憑證</string>
+    <string name="allow_self_signed_desc">關閉時會嚴格驗證伺服器憑證。開啟後不再驗證憑證鏈與主機名稱，同一網路的攻擊者可能竊取你的帳號密碼與帳目檔案。僅在明確知悉風險時開啟。</string>
+    <string name="allow_self_signed_confirm_title">確認信任自簽憑證？</string>
+    <string name="allow_self_signed_confirm_msg">開啟後本應用程式將不再驗證伺服器憑證。同一網路中的攻擊者可能攔截並竄改你的 WebDAV 連線，竊取帳號密碼與帳目資料。\n\n確認伺服器位址與你的私有雲一致後，仍要繼續嗎？</string>
+    <string name="allow_self_signed_confirm_yes">我已知悉風險，繼續開啟</string>
+
+    <!-- 分類刪除確認 -->
+    <string name="delete_category_confirm_title">刪除分類</string>
+    <string name="delete_category_in_use">此分類下還有 %1$d 筆記錄。刪除後這些記錄會顯示為「%2$s」，金額與統計不受影響。</string>
+
+    <!-- 帳目列內的付款方式副標題 -->
+    <string name="payment_method_short">付款：%1$s</string>
+    <string name="collection_method_short">收款：%1$s</string>
 </resources>

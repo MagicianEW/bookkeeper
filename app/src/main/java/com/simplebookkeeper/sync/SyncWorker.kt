@@ -93,7 +93,13 @@ class SyncWorker(
                 .setConstraints(constraints)
                 .build()
 
-            androidx.work.WorkManager.getInstance(context).enqueue(request)
+            // 唯一工作名 + KEEP：连续记账时只保留一次待执行的上传，
+            // 否则每保存一笔都会排一个 Worker，导致同一份数据被反复上传
+            androidx.work.WorkManager.getInstance(context).enqueueUniqueWork(
+                WORK_NAME + "_immediate",
+                androidx.work.ExistingWorkPolicy.KEEP,
+                request
+            )
         }
     }
 }

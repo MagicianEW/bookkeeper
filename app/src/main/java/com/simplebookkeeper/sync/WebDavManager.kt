@@ -1,6 +1,7 @@
 package com.simplebookkeeper.sync
 
 import android.content.Context
+import com.simplebookkeeper.R
 import com.simplebookkeeper.data.DataExporter
 import com.simplebookkeeper.data.repository.WebDavConfig
 import com.simplebookkeeper.util.AppLogger
@@ -19,6 +20,8 @@ import java.util.Date
 import java.util.Locale
 import java.util.concurrent.TimeUnit
 import javax.net.ssl.SSLContext
+import javax.net.ssl.SSLHandshakeException
+import javax.net.ssl.SSLPeerUnverifiedException
 import javax.net.ssl.TrustManager
 import javax.net.ssl.X509TrustManager
 
@@ -33,13 +36,29 @@ sealed class SyncResult {
 
 class WebDavManager(private val context: Context) {
 
-    private val client = OkHttpClient.Builder()
-        .connectTimeout(30, TimeUnit.SECONDS)
-        .readTimeout(60, TimeUnit.SECONDS)
-        .writeTimeout(60, TimeUnit.SECONDS)
-        .hostnameVerifier { _, _ -> true } // 允许自签名证书
-        .sslSocketFactory(createUnsafeSslSocketFactory(), createUnsafeTrustManager())
-        .build()
+    /**
+     * 缓存的客户端。安全策略随 [config] 变化，因此按"是否信任自签证书"分两套：
+     * 默认严格校验证书链与主机名；仅在用户显式开启自签支持时才降级。
+     */
+    private val secureClient: OkHttpClient by lazy { buildClient(false) }
+    private val insecureClient: OkHttpClient by lazy { buildClient(true) }
+
+    private fun client(config: WebDavConfig): OkHttpClient =
+        if (config.allowSelfSignedCert) insecureClient else secureClient
+
+    private fun buildClient(allowSelfSigned: Boolean): OkHttpClient {
+        val builder = OkHttpClient.Builder()
+            .connectTimeout(30, TimeUnit.SECONDS)
+            .readTimeout(60, TimeUnit.SECONDS)
+            .writeTimeout(60, TimeUnit.SECONDS)
+
+        if (allowSelfSigned) {
+            AppLogger.w(TAG, "已启用自签名证书信任：TLS 不再校验证书链与主机名")
+            builder.hostnameVerifier { _, _ -> true }
+            builder.sslSocketFactory(createUnsafeSslSocketFactory(), createUnsafeTrustManager())
+        }
+        return builder.build()
+    }
 
     private val REMOTE_FOLDER = "bookkeeper"
     private val ZIP_FILE_NAME = "bookkeeper_data.zip"
@@ -124,6 +143,13 @@ class WebDavManager(private val context: Context) {
 
     suspend fun testConnection(config: WebDavConfig): Result<Unit> = withContext(Dispatchers.IO) {
         AppLogger.i(TAG, "testConnection → ${config.url}")
+
+        // HTTP 允许使用（局域网私有云常见），但账号密码与账目会是明文传输，
+        // 这里只记一条警告日志，不阻断
+        if (config.url.trim().startsWith("http://", ignoreCase = true)) {
+            AppLogger.w(TAG, "WebDAV 使用明文 HTTP：账号密码与账目文件将以明文传输")
+        }
+
         try {
             val creds = Credentials.basic(config.username, config.password)
             val body = """<?xml version="1.0" encoding="utf-8"?>
@@ -135,21 +161,29 @@ class WebDavManager(private val context: Context) {
                 .header("Depth", "0")
                 .method("PROPFIND", body)
                 .build()
-            val response = client.newCall(request).execute()
-            if (response.code in 200..299 || response.code == 207) Result.success(Unit)
-            else Result.failure(IOException("服务器返回 ${response.code}"))
+            client(config).newCall(request).execute().use { response ->
+                if (response.code in 200..299 || response.code == 207) Result.success(Unit)
+                else Result.failure(IOException("服务器返回 ${response.code}"))
+            }
+        } catch (e: SSLPeerUnverifiedException) {
+            AppLogger.e(TAG, "testConnection 证书校验失败", e)
+            Result.failure(
+                IOException(
+                    context.getString(R.string.sync_cert_unverified_hint),
+                    e
+                )
+            )
         } catch (e: IOException) {
             AppLogger.e(TAG, "testConnection IOException", e)
             val message = when {
+                e is javax.net.ssl.SSLHandshakeException -> context.getString(R.string.sync_cert_invalid_hint)
                 e.message?.contains("Connection reset", ignoreCase = true) == true ->
-                    "连接被服务器重置，请检查服务器地址是否正确，或尝试使用HTTPS"
+                    context.getString(R.string.sync_conn_reset_hint)
                 e.message?.contains("Connection refused", ignoreCase = true) == true ->
-                    "连接被拒绝，请检查服务器地址和端口是否正确"
-                e.message?.contains("SSL", ignoreCase = true) == true ->
-                    "SSL证书错误，请尝试使用HTTP或检查证书"
+                    context.getString(R.string.sync_conn_refused_hint)
                 e.message?.contains("timeout", ignoreCase = true) == true ->
-                    "连接超时，请检查网络或服务器地址"
-                else -> e.message ?: "连接失败"
+                    context.getString(R.string.sync_timeout_hint)
+                else -> e.message ?: e.toString()
             }
             Result.failure(IOException(message, e))
         } catch (e: Exception) {
@@ -177,9 +211,11 @@ class WebDavManager(private val context: Context) {
             .method("PROPFIND", """<?xml version="1.0"?><propfind xmlns="DAV:"><prop><resourcetype/></prop></propfind>"""
                 .toRequestBody("application/xml".toMediaType()))
             .build()
-        val checkResp = runCatching { client.newCall(checkReq).execute() }.getOrNull()
+        val checkResp = runCatching {
+            client(config).newCall(checkReq).execute().use { it.code }
+        }.getOrNull()
 
-        if (checkResp?.code == 207 || checkResp?.code == 200) return@withContext
+        if (checkResp == 207 || checkResp == 200) return@withContext
 
         AppLogger.i(TAG, "ensureRemoteFolder → MKCOL $folderUrl")
         val mkcolReq = okhttp3.Request.Builder()
@@ -187,7 +223,7 @@ class WebDavManager(private val context: Context) {
             .header("Authorization", creds)
             .method("MKCOL", ByteArray(0).toRequestBody(null))
             .build()
-        runCatching { client.newCall(mkcolReq).execute() }
+        runCatching { client(config).newCall(mkcolReq).execute().use { } }
     }
 
     /** MOVE 远程文件（rename） */
@@ -202,24 +238,26 @@ class WebDavManager(private val context: Context) {
                 .url(remoteFileUrl(config, srcName))
                 .header("Authorization", creds)
                 .header("Destination", remoteFileUrl(config, destName))
+                // 必须显式 Overwrite: T —— 同一天多次同步时目标文件已存在，
+                // 默认 Overwrite: F 会让服务器返回 412，备份静默失败
+                .header("Overwrite", "T")
                 .method("MOVE", null)
                 .build()
-            val response = client.newCall(request).execute()
-            response.code in 200..299 || response.code == 201
+            client(config).newCall(request).execute().use { it.code in 200..299 }
         } catch (e: Exception) {
             AppLogger.e(TAG, "moveRemoteFile 失败", e)
             false
         }
     }
 
-    /** 清理旧备份，只保留最近 5 份 */
+    /** 清理旧备份，只保留最近 [MAX_REMOTE_BACKUPS] 份 */
     private suspend fun cleanupOldBackups(config: WebDavConfig) = withContext(Dispatchers.IO) {
         try {
             val datePattern = Regex("""bookkeeper_data_(\d{4}-\d{2}-\d{2})\.zip""")
             val remoteFiles = getRemoteFileList(config)
             val backups = remoteFiles.filter { datePattern.matches(it) }
                 .sortedByDescending { datePattern.find(it)?.groupValues?.get(1) ?: "" }
-                .drop(4) // 保留最新 4 份，删掉更旧的
+                .drop(MAX_REMOTE_BACKUPS)
             backups.forEach { backupName ->
                 AppLogger.i(TAG, "cleanupOldBackups: 删除旧备份 $backupName")
                 deleteRemoteFile(config, backupName)
@@ -239,7 +277,7 @@ class WebDavManager(private val context: Context) {
                     .header("Authorization", creds)
                     .delete()
                     .build()
-                client.newCall(request).execute().code in 200..299
+                client(config).newCall(request).execute().use { it.code in 200..299 }
             } catch (e: Exception) {
                 AppLogger.e(TAG, "deleteRemoteFile 失败: $fileName", e)
                 false
@@ -256,8 +294,7 @@ class WebDavManager(private val context: Context) {
                     .header("Authorization", creds)
                     .put(requestBody)
                     .build()
-                val response = client.newCall(request).execute()
-                response.code in 200..299
+                client(config).newCall(request).execute().use { it.code in 200..299 }
             } catch (e: Exception) {
                 AppLogger.e(TAG, "uploadFile 失败: $fileName", e)
                 false
@@ -273,13 +310,14 @@ class WebDavManager(private val context: Context) {
                     .header("Authorization", creds)
                     .get()
                     .build()
-                val response = client.newCall(request).execute()
-                if (response.code == 200) {
-                    response.body?.byteStream()?.use { input ->
-                        destFile.outputStream().use { out -> input.copyTo(out) }
-                    }
-                    true
-                } else false
+                client(config).newCall(request).execute().use { response ->
+                    if (response.code == 200) {
+                        response.body?.byteStream()?.use { input ->
+                            destFile.outputStream().use { out -> input.copyTo(out) }
+                        }
+                        true
+                    } else false
+                }
             } catch (e: Exception) {
                 AppLogger.e(TAG, "downloadFile 失败: $fileName", e)
                 false
@@ -298,8 +336,7 @@ class WebDavManager(private val context: Context) {
                     .header("Depth", "0")
                     .method("PROPFIND", body)
                     .build()
-                val response = client.newCall(request).execute()
-                response.code == 207 || response.code == 200
+                client(config).newCall(request).execute().use { it.code == 207 || it.code == 200 }
             } catch (e: Exception) { false }
         }
 
@@ -314,13 +351,14 @@ class WebDavManager(private val context: Context) {
                 .header("Depth", "1")
                 .method("PROPFIND", body)
                 .build()
-            val response = client.newCall(request).execute()
-            val html = response.body?.string() ?: return@withContext emptyList()
-            val regex = Regex("<[a-zA-Z0-9]*:??href[^>]*>([^<]+)</[a-zA-Z0-9]*:??href>", RegexOption.IGNORE_CASE)
-            regex.findAll(html)
-                .map { it.groupValues[1].substringAfterLast("/").substringAfterLast("%2F").substringAfterLast("%2f") }
-                .filter { it.isNotBlank() && it != REMOTE_FOLDER }
-                .toList()
+            client(config).newCall(request).execute().use { response ->
+                val html = response.body?.string() ?: return@withContext emptyList()
+                val regex = Regex("<[a-zA-Z0-9]*:??href[^>]*>([^<]+)</[a-zA-Z0-9]*:??href>", RegexOption.IGNORE_CASE)
+                regex.findAll(html)
+                    .map { it.groupValues[1].substringAfterLast("/").substringAfterLast("%2F").substringAfterLast("%2f") }
+                    .filter { it.isNotBlank() && it != REMOTE_FOLDER }
+                    .toList()
+            }
         } catch (e: Exception) {
             AppLogger.e(TAG, "getRemoteFileList 异常", e)
             emptyList()
@@ -329,9 +367,12 @@ class WebDavManager(private val context: Context) {
 
     companion object {
         private const val TAG = "WebDavManager"
+
+        /** 云端保留的历史备份份数（不含当前的 bookkeeper_data.zip） */
+        private const val MAX_REMOTE_BACKUPS = 4
     }
 
-    // 允许自签名SSL证书
+    // 仅在用户显式开启"信任自签名证书"时使用；默认走系统信任链校验
     private fun createUnsafeSslSocketFactory(): javax.net.ssl.SSLSocketFactory {
         val sslContext = SSLContext.getInstance("TLS")
         sslContext.init(null, arrayOf(createUnsafeTrustManager()), java.security.SecureRandom())

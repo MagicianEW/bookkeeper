@@ -23,7 +23,14 @@ data class WebDavConfig(
     val url: String = "",
     val username: String = "",
     val password: String = "",
-    val enabled: Boolean = false
+    val enabled: Boolean = false,
+    /**
+     * 信任自签名/无效证书。默认关闭。
+     *
+     * 开启后 TLS 将不再校验证书链与主机名，同网络的攻击者可中间人窃取
+     * WebDAV 账号密码与账目文件。仅当用户明确知悉风险时开启。
+     */
+    val allowSelfSignedCert: Boolean = false
 )
 
 class SettingsRepository(private val context: Context) {
@@ -45,6 +52,7 @@ class SettingsRepository(private val context: Context) {
         private const val KEY_WEBDAV_USERNAME = "webdav_username"
         private const val KEY_WEBDAV_PASSWORD = "webdav_password"
         private const val KEY_WEBDAV_ENABLED = "webdav_enabled"
+        private const val KEY_WEBDAV_ALLOW_SELF_SIGNED = "webdav_allow_self_signed"
         private const val KEY_MIGRATED = "migrated_to_encrypted"
 
         private val CLOUD_SYNC_PROMPT_SHOWN = booleanPreferencesKey("cloud_sync_prompt_shown")
@@ -85,7 +93,8 @@ class SettingsRepository(private val context: Context) {
                 url = encryptedPrefs?.getString(KEY_WEBDAV_URL, "") ?: "",
                 username = encryptedPrefs?.getString(KEY_WEBDAV_USERNAME, "") ?: "",
                 password = encryptedPrefs?.getString(KEY_WEBDAV_PASSWORD, "") ?: "",
-                enabled = encryptedPrefs?.getBoolean(KEY_WEBDAV_ENABLED, false) ?: false
+                enabled = encryptedPrefs?.getBoolean(KEY_WEBDAV_ENABLED, false) ?: false,
+                allowSelfSignedCert = encryptedPrefs?.getBoolean(KEY_WEBDAV_ALLOW_SELF_SIGNED, false) ?: false
             )
         } else {
             // 从旧 DataStore 读取（首次读取时触发迁移）
@@ -169,6 +178,7 @@ class SettingsRepository(private val context: Context) {
                 .putString(KEY_WEBDAV_USERNAME, config.username)
                 .putString(KEY_WEBDAV_PASSWORD, config.password)
                 .putBoolean(KEY_WEBDAV_ENABLED, config.enabled)
+                .putBoolean(KEY_WEBDAV_ALLOW_SELF_SIGNED, config.allowSelfSignedCert)
                 .putBoolean(KEY_MIGRATED, true)
                 .apply()
             AppLogger.i(TAG, "WebDAV 配置已保存（加密存储）")
