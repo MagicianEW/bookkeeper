@@ -49,9 +49,11 @@ class DatabaseManager(private val context: Context) {
     /** SQLCipher SupportFactory，供外部验证加密数据库可访问性 */
     val cipherFactory get() = supportFactory
 
-    private val _db: AppDatabase by lazy {
-        AppDatabase.getInstance(context, supportFactory)
-    }
+    // 注意：这里不能是 `by lazy` 的 val —— 导入/云恢复会关闭并重建数据库实例，
+    // 缓存的 val 会一直指向已关闭的对象，导致之后所有读写都抛异常。
+    @Volatile
+    private var _db: AppDatabase = AppDatabase.getInstance(context, supportFactory)
+
     val db: AppDatabase get() = _db
 
     val categoryDao: CategoryDao get() = _db.categoryDao()
@@ -60,6 +62,18 @@ class DatabaseManager(private val context: Context) {
     val paymentMethodDao: com.simplebookkeeper.data.dao.PaymentMethodDao get() = _db.paymentMethodDao()
 
     val dbFile: File get() = context.getDatabasePath(AppDatabase.DB_NAME)
+
+    /**
+     * 重建数据库实例。
+     *
+     * 导入 ZIP 或从云端恢复之后必须调用：旧的 RoomDatabase 已被 close()，
+     * 而各个 Repository 持有的 DAO 都来自旧实例。重建后它们会通过
+     * DatabaseManager 拿到新实例，应用可继续正常读写，无需重启。
+     */
+    fun reopenDatabase() {
+        _db = AppDatabase.recreateInstance(context, supportFactory)
+        AppLogger.i(TAG, "数据库实例已重建")
+    }
 
     suspend fun initialize() {
         withContext(Dispatchers.IO) {
@@ -258,16 +272,5 @@ class DatabaseManager(private val context: Context) {
 
     fun close() {
         AppDatabase.clearInstance()
-    }
-
-    /**
-     * 重置加密迁移标记并清空 DB 缓存
-     * 用于从 WebDAV 恢复或 zip 导入后，触发重新加密迁移
-     * 调用后需重启应用
-     */
-    fun resetForReEncryption() {
-        encryption.resetMigrationFlag()
-        AppDatabase.clearInstance()
-        AppLogger.i(TAG, "已重置加密迁移标记，重启应用后将重新加密")
     }
 }

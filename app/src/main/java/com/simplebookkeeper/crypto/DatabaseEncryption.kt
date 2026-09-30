@@ -29,7 +29,6 @@ class DatabaseEncryption(context: Context) {
 
     companion object {
         private const val KEY_NAME = "db_encryption_key"
-        private const val MIGRATION_FLAG = "encryption_migration_done"
     }
 
     /** 获取或创建 256 位加密密钥 */
@@ -47,15 +46,4 @@ class DatabaseEncryption(context: Context) {
 
     /** 创建 SQLCipher SupportFactory，传给 Room databaseBuilder */
     fun getSupportFactory(): SupportFactory = SupportFactory(getOrCreateKey())
-
-    fun isMigrationDone(): Boolean = prefs.getBoolean(MIGRATION_FLAG, false)
-
-    fun markMigrationDone() {
-        prefs.edit().putBoolean(MIGRATION_FLAG, true).apply()
-    }
-
-    /** 重置加密迁移标记，用于导入/恢复未加密数据后触发重新迁移 */
-    fun resetMigrationFlag() {
-        prefs.edit().putBoolean(MIGRATION_FLAG, false).apply()
-    }
 }

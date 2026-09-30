@@ -33,7 +33,9 @@ import kotlinx.coroutines.launch
 @Database(
     entities = [Transaction::class, Category::class, Saving::class, PaymentMethodEntity::class],
     version = 6,
-    exportSchema = false
+    // 打开 schema 导出：Room 才能在迁移时校验表结构，
+    // 后续加版本也能用 MigrationTestHelper 回归测试
+    exportSchema = true
 )
 @TypeConverters(Converters::class)
 abstract class AppDatabase : RoomDatabase() {
@@ -134,6 +136,18 @@ abstract class AppDatabase : RoomDatabase() {
         fun clearInstance() {
             INSTANCE?.close()
             INSTANCE = null
+        }
+
+        /**
+         * 关闭当前单例并立刻重建一个新的实例。
+         *
+         * 用于「导入 / 云端恢复」之后：旧实例已被 close()，所有持有它的
+         * DAO 都会打到已关闭的库上。必须把新实例交回 DatabaseManager，
+         * 否则应用会停留在"导入成功但再也记不上账"的状态。
+         */
+        fun recreateInstance(context: Context, factory: SupportSQLiteOpenHelper.Factory): AppDatabase {
+            clearInstance()
+            return getInstance(context, factory)
         }
 
         /** 默认分类数据（与原 MetaDatabase 保持一致） */
