@@ -37,6 +37,25 @@ fun StatisticsScreen(
     val availableYears by viewModel.availableYears.collectAsState()
     val categoriesMap by viewModel.categoriesMap.collectAsState()
 
+    // 有数据的年份集合，用于把切换范围收敛到真实数据
+    val yearsWithData = remember(availableYears) {
+        availableYears.mapNotNull { it.toIntOrNull() }.toSet()
+    }
+
+    // 切换边界：有数据时收敛到 [最早年份, 今年]，无数据时退回 2000..今年
+    val minSelectableYear = remember(yearsWithData, currentYear) {
+        yearsWithData.minOrNull()?.coerceAtMost(currentYear) ?: 2000
+    }
+    val maxSelectableYear = remember(yearsWithData, currentYear) {
+        yearsWithData.maxOrNull()?.coerceAtLeast(currentYear) ?: currentYear
+    }
+
+    // 数据里出现了更早/更晚年份时，把当前选中值收敛回合法范围
+    LaunchedEffect(minSelectableYear, maxSelectableYear) {
+        if (selectedYear < minSelectableYear) selectedYear = minSelectableYear
+        if (selectedYear > maxSelectableYear) selectedYear = maxSelectableYear
+    }
+
     // 年度汇总
     LaunchedEffect(selectedYear) {
         scope.launch {
@@ -71,11 +90,11 @@ fun StatisticsScreen(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.Center
         ) {
-            IconButton(onClick = {
-                val minYear = 2000
-                if (selectedYear > minYear) selectedYear--
-            }) {
-                Icon(Icons.Default.KeyboardArrowLeft, contentDescription = "上一年")
+            IconButton(
+                onClick = { if (selectedYear > minSelectableYear) selectedYear-- },
+                enabled = selectedYear > minSelectableYear
+            ) {
+                Icon(Icons.Default.KeyboardArrowLeft, contentDescription = stringResource(R.string.prev_year))
             }
             Text(
                 stringResource(R.string.year_format, selectedYear),
@@ -83,11 +102,11 @@ fun StatisticsScreen(
                 fontSize = 20.sp,
                 modifier = Modifier.padding(horizontal = 24.dp)
             )
-            IconButton(onClick = {
-                val maxYear = Calendar.getInstance().get(Calendar.YEAR) + 1
-                if (selectedYear < maxYear) selectedYear++
-            }) {
-                Icon(Icons.Default.KeyboardArrowRight, contentDescription = "下一年")
+            IconButton(
+                onClick = { if (selectedYear < maxSelectableYear) selectedYear++ },
+                enabled = selectedYear < maxSelectableYear
+            ) {
+                Icon(Icons.Default.KeyboardArrowRight, contentDescription = stringResource(R.string.next_year))
             }
         }
 
@@ -133,6 +152,7 @@ fun StatisticsScreen(
                 TransactionItem(
                     transaction = transaction,
                     category = categoriesMap[transaction.categoryId],
+                    paymentMethodLabel = transaction.customPaymentMethod,
                     onClick = { onTransactionClick(transaction.id) }
                 )
             }

@@ -16,6 +16,7 @@ import androidx.compose.ui.unit.sp
 import com.simplebookkeeper.R
 import com.simplebookkeeper.data.model.Transaction
 import com.simplebookkeeper.data.model.Category
+import com.simplebookkeeper.data.model.PaymentMethod
 import com.simplebookkeeper.data.model.TransactionType
 import com.simplebookkeeper.ui.theme.ExpenseRed
 import com.simplebookkeeper.ui.theme.IncomeGreen
@@ -28,11 +29,22 @@ private val dateFormat = SimpleDateFormat("MM-dd", Locale.getDefault())
 fun TransactionItem(
     transaction: Transaction,
     category: Category?,
+    /** 付款方式/收款方式展示名。自定义方式优先，否则为 null（由标准方式本地化） */
+    paymentMethodLabel: String? = null,
     onClick: () -> Unit = {},
     onLongClick: (() -> Unit)? = null
 ) {
     val amountColor = if (transaction.type == TransactionType.INCOME) IncomeGreen else ExpenseRed
     val amountPrefix = if (transaction.type == TransactionType.INCOME) "+" else "-"
+    // 付款方式：v0.4.6 起该字段一直在库里，但此前界面从不展示
+    val methodText = paymentMethodLabel ?: when (transaction.paymentMethod) {
+        PaymentMethod.CASH -> stringResource(R.string.cash)
+        PaymentMethod.WECHAT -> stringResource(R.string.wechat)
+        PaymentMethod.ALIPAY -> stringResource(R.string.alipay)
+        PaymentMethod.BANK_CARD -> stringResource(R.string.card)
+        PaymentMethod.CREDIT_CARD -> stringResource(R.string.credit_card)
+        PaymentMethod.OTHER -> stringResource(R.string.other)
+    }
 
     Card(
         modifier = Modifier
@@ -77,6 +89,16 @@ fun TransactionItem(
                     text = category?.name ?: stringResource(R.string.unknown_category),
                     style = MaterialTheme.typography.bodyLarge,
                     fontWeight = FontWeight.Medium
+                )
+                // 付款方式副标题
+                Text(
+                    text = stringResource(
+                        if (transaction.type == TransactionType.INCOME)
+                            R.string.collection_method_short else R.string.payment_method_short,
+                        methodText
+                    ),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 if (transaction.note.isNotBlank()) {
                     Text(

@@ -16,6 +16,16 @@ class PaymentMethodRepository(
     fun getByType(type: TransactionType): Flow<List<PaymentMethodEntity>> =
         dao.getByType(type)
 
+    /**
+     * 只取自定义方式。
+     *
+     * 记账页用它渲染"自定义方式"chip —— 不能用 getByType() 再按名字过滤：
+     * 预置方式在库里的名字是中文（现金/微信/…），而界面按当前语言渲染
+     * 英文用户就过滤不掉，会同时看到 Cash 和 现金 两个 chip。
+     */
+    fun getCustomByType(type: TransactionType): Flow<List<PaymentMethodEntity>> =
+        dao.getCustomByType(type)
+
     suspend fun getById(id: Long): PaymentMethodEntity? = dao.getById(id)
 
     suspend fun add(entity: PaymentMethodEntity): Long = dao.insert(entity)

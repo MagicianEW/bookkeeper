@@ -36,22 +36,35 @@ class TransactionRepository(
         }
     }
 
+    /**
+     * 增删改交易后刷新年份缓存。
+     *
+     * 旧实现只在 init 时取一次，导致「给新年份记了第一笔」之后，
+     * 年份选择器里依旧没有新的一年，要重启 App 才会出现。
+     */
+    private fun refreshAvailableYearsAfterWrite() = refreshAvailableYears()
+
     // ─── 账目操作 ──────────────────────────────────────────────
 
     suspend fun addTransaction(transaction: Transaction): Long {
         val result = dbManager.transactionDao.insert(transaction)
+        refreshAvailableYearsAfterWrite()
         return result
     }
 
-    suspend fun updateTransaction(transaction: Transaction) =
+    suspend fun updateTransaction(transaction: Transaction) {
         dbManager.transactionDao.update(transaction)
+        refreshAvailableYearsAfterWrite()
+    }
 
     suspend fun deleteTransaction(transaction: Transaction) {
         dbManager.transactionDao.delete(transaction)
+        refreshAvailableYearsAfterWrite()
     }
 
     suspend fun deleteTransactionById(id: Long) {
         dbManager.transactionDao.deleteById(id)
+        refreshAvailableYearsAfterWrite()
     }
 
     suspend fun getTransactionById(id: Long): Transaction? =
@@ -139,6 +152,10 @@ class TransactionRepository(
 
     suspend fun deleteCategory(category: Category) =
         dbManager.categoryDao.delete(category)
+
+    /** 该分类下的记录数（删除前提示，避免用户误删后账目变成"未知分类"） */
+    suspend fun getTransactionCountByCategory(categoryId: Long): Int =
+        dbManager.transactionDao.countByCategory(categoryId)
 
     suspend fun getCategoryCount(): Int =
         dbManager.categoryDao.count()

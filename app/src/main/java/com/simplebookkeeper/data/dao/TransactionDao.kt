@@ -123,4 +123,8 @@ interface TransactionDao {
     /** 全量删除（迁移时防止重复插入） */
     @Query("DELETE FROM transactions")
     suspend fun deleteAll()
+
+    /** 统计某分类下的记录数（删除分类前提示用户用） */
+    @Query("SELECT COUNT(*) FROM transactions WHERE categoryId = :categoryId")
+    suspend fun countByCategory(categoryId: Long): Int
 }

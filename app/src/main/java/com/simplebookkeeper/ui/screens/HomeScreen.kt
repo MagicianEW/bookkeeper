@@ -134,6 +134,7 @@ fun HomeScreen(
                         TransactionItem(
                             transaction = transaction,
                             category = categoriesMap[transaction.categoryId],
+                            paymentMethodLabel = transaction.customPaymentMethod,
                             onClick = { onTransactionClick(transaction.id) },
                             onLongClick = { showDeleteDialog = transaction.id }
                         )
@@ -189,7 +190,7 @@ fun MonthSelector(
         horizontalArrangement = Arrangement.Center
     ) {
         IconButton(onClick = onPrevious) {
-            Icon(Icons.Default.KeyboardArrowLeft, contentDescription = "上月")
+            Icon(Icons.Default.KeyboardArrowLeft, contentDescription = stringResource(R.string.prev_month))
         }
         Text(
             text = stringResource(R.string.month_format, year, month),
@@ -198,7 +199,7 @@ fun MonthSelector(
             modifier = Modifier.padding(horizontal = 24.dp)
         )
         IconButton(onClick = onNext) {
-            Icon(Icons.Default.KeyboardArrowRight, contentDescription = "下月")
+            Icon(Icons.Default.KeyboardArrowRight, contentDescription = stringResource(R.string.next_month))
         }
     }
 }

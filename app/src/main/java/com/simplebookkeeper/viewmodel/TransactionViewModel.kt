@@ -15,6 +15,8 @@ import com.simplebookkeeper.data.repository.WebDavConfig
 import com.simplebookkeeper.sync.SyncResult
 import com.simplebookkeeper.sync.SyncWorker
 import com.simplebookkeeper.util.AppLogger
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import java.util.Calendar
@@ -80,6 +82,9 @@ class TransactionViewModel(application: Application) : AndroidViewModel(applicat
     private val _searchState = MutableStateFlow(SearchUiState())
     val searchState: StateFlow<SearchUiState> = _searchState.asStateFlow()
 
+    /** 当前搜索收集协程，新搜索会取消旧的 */
+    private var searchJob: Job? = null
+
     fun setDisplayMonth(year: Int, month: Int) {
         _displayYear.value = year
         _displayMonth.value = month
@@ -128,7 +133,11 @@ class TransactionViewModel(application: Application) : AndroidViewModel(applicat
         categoryId: Long? = null,
         keyword: String? = null
     ) {
-        viewModelScope.launch {
+        // 旧实现每次调用都新开一个永不结束的 collect：Room Flow 会被永久持有，
+        // 每点一次搜索就多一个 DB 观察者，多个收集者还会竞争写 _searchState。
+        // 这里先取消上一次的收集，保证同一时刻只有一个。
+        searchJob?.cancel()
+        searchJob = viewModelScope.launch {
             _searchState.value = SearchUiState(isSearching = true)
             try {
                 repo.search(startDate, endDate, minAmount, maxAmount, type, categoryId, keyword)
@@ -139,6 +148,8 @@ class TransactionViewModel(application: Application) : AndroidViewModel(applicat
                     .collect { results ->
                         _searchState.value = SearchUiState(results = results, isSearching = false)
                     }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 AppLogger.e("TransactionViewModel", "搜索失败", e)
                 _searchState.value = SearchUiState(results = emptyList(), isSearching = false)
@@ -175,6 +186,10 @@ class TransactionViewModel(application: Application) : AndroidViewModel(applicat
     fun deleteCategory(category: Category) {
         viewModelScope.launch { repo.deleteCategory(category) }
     }
+
+    /** 查询某分类下的记录数 */
+    suspend fun getTransactionCountByCategory(categoryId: Long): Int =
+        repo.getTransactionCountByCategory(categoryId)
 
     fun getTransactionsByYear(year: Int): Flow<List<Transaction>> =
         repo.getTransactionsByYear(year)

@@ -2,6 +2,7 @@ package com.simplebookkeeper.ui.screens
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -17,6 +18,8 @@ import androidx.compose.ui.unit.dp
 import com.simplebookkeeper.R
 import com.simplebookkeeper.data.model.TransactionType
 import com.simplebookkeeper.ui.components.TransactionItem
+import com.simplebookkeeper.util.DateTimeUtils
+import com.simplebookkeeper.util.Money
 import com.simplebookkeeper.viewmodel.MainViewModel
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -160,6 +163,8 @@ fun SearchScreen(
 
             if (filteredCats.isNotEmpty()) {
                 Text(stringResource(R.string.category), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                // 旧实现 take(5)：自定义分类多于 5 个时其余无法按分类检索，
+                // 与"四维度模糊搜索"的承诺不符。改为可横向滚动的完整列表。
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
@@ -169,7 +174,12 @@ fun SearchScreen(
                         onClick = { selectedCategoryId = null },
                         label = { Text(stringResource(R.string.all)) }
                     )
-                    filteredCats.take(5).forEach { cat ->
+                }
+                LazyRow(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    items(filteredCats, key = { it.id }) { cat ->
                         FilterChip(
                             selected = selectedCategoryId == cat.id,
                             onClick = { selectedCategoryId = if (selectedCategoryId == cat.id) null else cat.id },
@@ -186,17 +196,10 @@ fun SearchScreen(
                 onClick = {
                     hasSearched = true
                     viewModel.search(
-                        startDate = startDate?.time,
-                        endDate = endDate?.let {
-                            val cal = java.util.Calendar.getInstance()
-                            cal.time = it
-                            cal.set(java.util.Calendar.HOUR_OF_DAY, 23)
-                            cal.set(java.util.Calendar.MINUTE, 59)
-                            cal.set(java.util.Calendar.SECOND, 59)
-                            cal.timeInMillis
-                        },
-                        minAmount = minAmount.toDoubleOrNull()?.times(100)?.toLong(),
-                        maxAmount = maxAmount.toDoubleOrNull()?.times(100)?.toLong(),
+                        startDate = startDate?.let { DateTimeUtils.toStartOfDayMillis(it) },
+                        endDate = endDate?.let { DateTimeUtils.toEndOfDayMillis(it) },
+                        minAmount = Money.yuanToFen(minAmount),
+                        maxAmount = Money.yuanToFen(maxAmount),
                         type = selectedType,
                         categoryId = selectedCategoryId,
                         keyword = keyword.ifBlank { null }
@@ -234,6 +237,7 @@ fun SearchScreen(
                         TransactionItem(
                             transaction = transaction,
                             category = categoriesMap[transaction.categoryId],
+                            paymentMethodLabel = transaction.customPaymentMethod,
                             onClick = { onTransactionClick(transaction.id) }
                         )
                     }
@@ -250,7 +254,8 @@ fun SearchScreen(
             confirmButton = {
                 TextButton(onClick = {
                     state.selectedDateMillis?.let {
-                        startDate = Date(it)
+                        // DatePicker 是 UTC 语义，需换算成本地日期
+                        startDate = DateTimeUtils.utcPickerMillisToLocalDate(it)
                         startDateText = searchDateFormat.format(startDate!!)
                     }
                     showStartPicker = false
@@ -267,7 +272,7 @@ fun SearchScreen(
             confirmButton = {
                 TextButton(onClick = {
                     state.selectedDateMillis?.let {
-                        endDate = Date(it)
+                        endDate = DateTimeUtils.utcPickerMillisToLocalDate(it)
                         endDateText = searchDateFormat.format(endDate!!)
                     }
                     showEndPicker = false

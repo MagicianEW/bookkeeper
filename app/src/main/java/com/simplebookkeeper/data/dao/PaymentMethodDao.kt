@@ -23,6 +23,10 @@ interface PaymentMethodDao {
     @Query("SELECT * FROM payment_methods WHERE type = :type ORDER BY isDefault DESC, id ASC")
     fun getByType(type: TransactionType): Flow<List<PaymentMethodEntity>>
 
+    /** 只取自定义方式（排除预置） */
+    @Query("SELECT * FROM payment_methods WHERE type = :type AND isDefault = 0 ORDER BY id ASC")
+    fun getCustomByType(type: TransactionType): Flow<List<PaymentMethodEntity>>
+
     @Query("SELECT * FROM payment_methods WHERE id = :id")
     suspend fun getById(id: Long): PaymentMethodEntity?
 
