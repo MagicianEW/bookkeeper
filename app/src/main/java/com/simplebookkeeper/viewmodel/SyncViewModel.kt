@@ -64,12 +64,18 @@ class SyncViewModel(application: Application) : AndroidViewModel(application) {
             try {
                 val zipBytes = app.webDavManager.downloadData(config)
                 if (zipBytes == null) {
-                    onResult(SyncResult.Error("REMOTE_NOT_FOUND"))
+                    onResult(SyncResult.Error(app.getString(R.string.sync_remote_not_found)))
                     return@launch
                 }
                 val tempFile = File(app.cacheDir, "sync_import.zip")
                 tempFile.writeBytes(zipBytes)
-                val success = DataExporter.importFromZip(app, tempFile, password)
+                // 与 syncNow 保持一致：未显式传密码时回落到安全存储中的应用锁密码，
+                // 否则开启应用锁时导出的加密 ZIP 会因缺密码而无法解密
+                val isPasswordEnabled = app.passwordManager.isPasswordEnabled.first()
+                val importPassword = if (isPasswordEnabled) {
+                    password ?: app.passwordManager.getPlainPassword()
+                } else null
+                val success = DataExporter.importFromZip(app, tempFile, importPassword)
                 tempFile.delete()
                 if (success) {
                     onResult(SyncResult.Success)
