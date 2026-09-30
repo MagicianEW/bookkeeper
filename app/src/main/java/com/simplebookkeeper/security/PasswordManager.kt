@@ -14,7 +14,6 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import java.security.MessageDigest
-import java.math.BigInteger
 import java.security.SecureRandom
 import javax.crypto.Cipher
 import javax.crypto.SecretKey
@@ -58,6 +57,45 @@ class PasswordManager(private val context: Context) {
             val salt = ByteArray(SALT_LENGTH)
             SecureRandom().nextBytes(salt)
             return salt
+        }
+
+        /**
+         * 字节数组 → 小写 hex
+         *
+         * 注意：不可用 BigInteger/NumberFormat 之类的字符串转数字方案，
+         * 那类实现会丢弃前导零字节，导致 salt 还原后与原始值不同。
+         */
+        fun bytesToHex(bytes: ByteArray): String =
+            bytes.joinToString("") { "%02x".format(it) }
+
+        /**
+         * 小写 hex → 字节数组（逐字节解析，严格保留前导零字节）
+         *
+         * 这是 v0.4.6 修复的关键：旧实现用 BigInteger(hex, 16).toByteArray()，
+         * 当随机 salt 的首字节恰为 0x00（约 1/256 概率）时会被截短，
+         * 导致 PBKDF2 派生出的密钥与设置密码时不同 → 正确密码也无法通过校验。
+         */
+        fun hexToBytes(hex: String): ByteArray {
+            require(hex.length % 2 == 0) { "hex 长度必须为偶数: ${hex.length}" }
+            val out = ByteArray(hex.length / 2)
+            for (i in out.indices) {
+                val hi = Character.digit(hex[i * 2], 16)
+                val lo = Character.digit(hex[i * 2 + 1], 16)
+                require(hi >= 0 && lo >= 0) { "非法 hex 字符" }
+                out[i] = ((hi shl 4) or lo).toByte()
+            }
+            return out
+        }
+
+        /**
+         * PBKDF2 哈希（当前默认方式，100,000 次迭代）
+         * @return Pair(盐的 hex, 哈希的 hex)
+         */
+        fun hashPasswordPbkdf2(password: String, salt: ByteArray): Pair<String, String> {
+            val factory = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256")
+            val spec = PBEKeySpec(password.toCharArray(), salt, PBKDF2_ITERATIONS, KEY_LENGTH)
+            val hash = factory.generateSecret(spec).encoded
+            return Pair(bytesToHex(salt), bytesToHex(hash))
         }
 
         /** AES/GCM/NoPadding 加密，返回 iv + ciphertext */
@@ -119,9 +157,15 @@ class PasswordManager(private val context: Context) {
             if (parts.size == 2) {
                 return try {
                     val (computedSalt, computedHash) = hashPasswordPbkdf2(password, hexToBytes(parts[0]))
-                    val matched = computedHash == parts[1]
+                    // 恒定时间比较，避免按字节提前返回带来的时序侧信道
+                    val matched = MessageDigest.isEqual(
+                        computedHash.toByteArray(Charsets.UTF_8),
+                        parts[1].toByteArray(Charsets.UTF_8)
+                    )
                     if (matched) {
                         AppLogger.i(TAG, "PBKDF2 验证成功")
+                    } else {
+                        AppLogger.w(TAG, "PBKDF2 验证失败")
                     }
                     matched
                 } catch (e: Exception) {
@@ -223,13 +267,7 @@ class PasswordManager(private val context: Context) {
         )
     }
 
-    // PBKDF2 哈希（当前默认方式，100,000 次迭代）
-    private fun hashPasswordPbkdf2(password: String, salt: ByteArray): Pair<String, String> {
-        val factory = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256")
-        val spec = PBEKeySpec(password.toCharArray(), salt, PBKDF2_ITERATIONS, KEY_LENGTH)
-        val hash = factory.generateSecret(spec).encoded
-        return Pair(bytesToHex(salt), bytesToHex(hash))
-    }
+    // PBKDF2 哈希 / hex 编解码已移至 companion object，便于单元测试覆盖
 
     // SHA-256 哈希（仅用于旧版兼容，自动升级到 PBKDF2）
     @Deprecated("仅用于旧版本兼容，验证后会自动升级到 PBKDF2")
@@ -237,19 +275,5 @@ class PasswordManager(private val context: Context) {
         val digest = MessageDigest.getInstance("SHA-256")
         val bytes = digest.digest(password.toByteArray(Charsets.UTF_8))
         return bytesToHex(bytes)
-    }
-
-    private fun bytesToHex(bytes: ByteArray): String =
-        bytes.joinToString("") { "%02x".format(it) }
-
-    private fun hexToBytes(hex: String): ByteArray {
-        return BigInteger(hex, 16).toByteArray().let { bytes ->
-            // BigInteger may prepend a 0 byte for positive numbers; strip it
-            if (bytes.size == hex.length / 2 + 1 && bytes[0] == 0.toByte()) {
-                bytes.copyOfRange(1, bytes.size)
-            } else {
-                bytes
-            }
-        }
     }
 }
