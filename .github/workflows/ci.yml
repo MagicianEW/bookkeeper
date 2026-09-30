@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v3
+
+      - name: Run unit tests
+        # 金额解析、密码盐编解码、CSV 往返都属于"错了会静默丢数据"的纯函数，
+        # 必须在每次提交时验证
+        run: ./gradlew testDebugUnitTest
+
+      - name: Build debug APK
+        run: ./gradlew assembleDebug
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-debug
+          path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: ignore
+
+      - name: Upload Room schemas
+        uses: actions/upload-artifact@v4
+        with:
+          name: room-schemas
+          path: app/schemas/
+          if-no-files-found: ignore

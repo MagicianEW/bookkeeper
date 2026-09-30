@@ -57,6 +57,20 @@ android {
         error += "RemoveWorkManagerInitializer"
     }
 
+    // Room schema 导出目录：配合 @Database(exportSchema = true)
+    ksp {
+        arg("room.schemaLocation", "$projectDir/schemas")
+    }
+
+    testOptions {
+        unitTests {
+            // AppLogger 会调用 android.util.Log，纯 JVM 单元测试里没有实现。
+            // 开启后未 mock 的 android 方法返回默认值而不是抛异常，
+            // 这样 DataExporter 的跳过分支日志不会让测试假失败。
+            isReturnDefaultValues = true
+        }
+    }
+
     packaging {
         jniLibs {
             useLegacyPackaging = true
