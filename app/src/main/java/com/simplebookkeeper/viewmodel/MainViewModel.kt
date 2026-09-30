@@ -68,8 +68,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun deleteCategory(category: Category) = transactionVM.deleteCategory(category)
 
-    fun addSaving(type: SavingType, amountYuan: Double, note: String, date: Date = Date()) =
-        savingsVM.addSaving(type, amountYuan, note, date)
+    suspend fun getTransactionCountByCategory(categoryId: Long): Int =
+        transactionVM.getTransactionCountByCategory(categoryId)
+
+    fun addSaving(type: SavingType, amountFen: Long, note: String, date: Date = Date()) =
+        savingsVM.addSaving(type, amountFen, note, date)
 
     fun deleteSaving(saving: Saving) = savingsVM.deleteSaving(saving)
 

@@ -31,6 +31,8 @@ import com.simplebookkeeper.data.model.Category
 import com.simplebookkeeper.data.model.PaymentMethod
 import com.simplebookkeeper.data.model.PaymentMethodEntity
 import com.simplebookkeeper.util.AppLogger
+import com.simplebookkeeper.util.DateTimeUtils
+import com.simplebookkeeper.util.Money
 import com.simplebookkeeper.data.model.Transaction
 import com.simplebookkeeper.data.model.TransactionType
 import com.simplebookkeeper.ui.theme.ExpenseRed
@@ -66,6 +68,9 @@ fun AddEditTransactionScreen(
     var newCategoryName by remember { mutableStateOf("") }
     var showDeleteDialog by remember { mutableStateOf(false) }
     var isSaving by remember { mutableStateOf(false) }
+    // 编辑模式下保留原始 createdAt —— @Update 是整行覆盖，
+    // 若不带上会丢失"这笔记录最初是什么时候记的"
+    var originalCreatedAt by remember { mutableLongStateOf(0L) }
 
     // 支付方式状态
     var selectedCustomMethod by remember { mutableStateOf<String?>(null) }
@@ -100,14 +105,15 @@ fun AddEditTransactionScreen(
                 selectedCustomMethod = t.customPaymentMethod
                 note = t.note
                 selectedDate = t.date
+                originalCreatedAt = t.createdAt
             }
             dataLoaded = true
         }
     }
 
-    // 加载自定义支付/收款方式
+    // 加载自定义支付/收款方式（只取 isDefault=0，不含预置方式）
     LaunchedEffect(selectedType) {
-        viewModel.paymentMethodRepository.getByType(selectedType).collect { list ->
+        viewModel.paymentMethodRepository.getCustomByType(selectedType).collect { list ->
             customMethods = list
         }
     }
@@ -321,15 +327,9 @@ fun AddEditTransactionScreen(
                             label = { Text(label, fontSize = 12.sp) }
                         )
                     }
-                    // 自定义方式
-                    // 过滤掉与标准枚举名称重复的自定义方式
-                    val customNamesToHide = setOf(
-                        stringResource(R.string.cash),    // 现金
-                        stringResource(R.string.wechat),  // 微信
-                        stringResource(R.string.alipay),  // 支付宝
-                        stringResource(R.string.card)     // 银行卡
-                    )
-                    customMethods.filterNot { it.name in customNamesToHide }.forEach { custom ->
+                    // 自定义方式：getCustomByType 已排除预置项，无需再按名字比对
+                    // （旧逻辑用本地化字符串去比对库里的中文名，英文界面会失效并重复显示）
+                    customMethods.forEach { custom ->
                         FilterChip(
                             selected = selectedCustomMethod == custom.name,
                             onClick = {
@@ -369,28 +369,36 @@ fun AddEditTransactionScreen(
                 // 保存按钮
                 Button(
                     onClick = {
+                        // 校验全部通过后才置 isSaving —— 否则一次误触（金额为空/为 0、
+                        // 未选分类）会让早退分支跳过复位，保存按钮在本页面彻底失效
+                        val amountFen = Money.yuanToFen(amountText)
+                        if (amountFen == null || amountFen <= 0L) {
+                            AppLogger.i("AddEditTxScreen", "保存校验失败: amountText=$amountText")
+                            return@Button
+                        }
+                        if (selectedCategoryId == 0L) {
+                            AppLogger.i("AddEditTxScreen", "保存校验失败: 未选择分类")
+                            return@Button
+                        }
                         if (isSaving) {
                             AppLogger.i("AddEditTxScreen", "保存拦截: isSaving=$isSaving")
                             return@Button
                         }
                         isSaving = true
                         AppLogger.i("AddEditTxScreen", "保存按钮点击: isEditMode=$isEditMode, transactionId=$transactionId")
-                        val amountYuan = amountText.toDoubleOrNull() ?: return@Button
-                        if (amountYuan <= 0 || selectedCategoryId == 0L) {
-                            AppLogger.i("AddEditTxScreen", "保存校验失败: amountYuan=$amountYuan, selectedCategoryId=$selectedCategoryId")
-                            return@Button
-                        }
                         val transaction = Transaction(
                             id = transactionId ?: 0L,
                             type = selectedType,
-                            amount = (amountYuan * 100).toLong(),  // 元 → 分
+                            amount = amountFen,          // 元 → 分，整数解析无精度损失
                             categoryId = selectedCategoryId,
                             paymentMethod = selectedPayment,
                             customPaymentMethod = selectedCustomMethod,
                             note = note.trim(),
-                            date = selectedDate
+                            date = selectedDate,
+                            createdAt = if (originalCreatedAt > 0L) originalCreatedAt
+                                       else System.currentTimeMillis()
                         )
-                        AppLogger.i("AddEditTxScreen", "准备保存: type=$selectedType, amount=${amountYuan * 100}, categoryId=$selectedCategoryId, date=$selectedDate")
+                        AppLogger.i("AddEditTxScreen", "准备保存: type=$selectedType, amount=$amountFen, categoryId=$selectedCategoryId, date=$selectedDate")
                         if (isEditMode) {
                             viewModel.updateTransaction(transaction) {
                                 AppLogger.i("AddEditTxScreen", "update完成，触发onBack")
@@ -417,14 +425,15 @@ fun AddEditTransactionScreen(
     // 日期选择器
     if (showDatePicker) {
         val datePickerState = rememberDatePickerState(
-            initialSelectedDateMillis = selectedDate.time
+            // DatePicker 期望 UTC 零点，需把本地日期转过去，否则打开时会高亮前一天
+            initialSelectedDateMillis = DateTimeUtils.localDateToUtcPickerMillis(selectedDate)
         )
         DatePickerDialog(
             onDismissRequest = { showDatePicker = false },
             confirmButton = {
                 TextButton(onClick = {
                     datePickerState.selectedDateMillis?.let {
-                        selectedDate = Date(it)
+                        selectedDate = DateTimeUtils.utcPickerMillisToLocalDate(it)
                     }
                     showDatePicker = false
                 }) { Text(stringResource(R.string.confirm)) }

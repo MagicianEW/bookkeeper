@@ -14,6 +14,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.simplebookkeeper.R
 import com.simplebookkeeper.data.model.SavingType
+import com.simplebookkeeper.util.DateTimeUtils
+import com.simplebookkeeper.util.Money
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
@@ -25,7 +27,7 @@ private val savingDialogDateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.getDe
 @Composable
 fun AddSavingDialog(
     currentBalance: Long = 0L,
-    onConfirm: (type: SavingType, amountYuan: Double, note: String, date: Date) -> Unit,
+    onConfirm: (type: SavingType, amountFen: Long, note: String, date: Date) -> Unit,
     onDismiss: () -> Unit
 ) {
     var type by remember { mutableStateOf(SavingType.DEPOSIT) }
@@ -122,16 +124,16 @@ fun AddSavingDialog(
         },
         confirmButton = {
             TextButton(onClick = {
-                val amount = amountText.toDoubleOrNull()
+                val amountFen = Money.yuanToFen(amountText)
                 when {
-                    amount == null || amount <= 0 -> error = invalidAmountError
-                    type == SavingType.WITHDRAW && (amount * 100).toLong() > currentBalance -> error = insufficientBalanceError
+                    amountFen == null || amountFen <= 0L -> error = invalidAmountError
+                    type == SavingType.WITHDRAW && amountFen > currentBalance -> error = insufficientBalanceError
                     else -> {
                         val cal = Calendar.getInstance().apply {
                             set(year, month, day, 0, 0, 0)
                             set(Calendar.MILLISECOND, 0)
                         }
-                        onConfirm(type, amount, note.trim(), cal.time)
+                        onConfirm(type, amountFen, note.trim(), cal.time)
                     }
                 }
             }) { Text(stringResource(R.string.confirm)) }
@@ -143,16 +145,18 @@ fun AddSavingDialog(
 
     if (showDatePicker) {
         val datePickerState = rememberDatePickerState(
-            initialSelectedDateMillis = Calendar.getInstance().apply {
-                set(year, month, day)
-            }.timeInMillis
+            // DatePicker 期望 UTC 零点，与本地日期互转，避免打开时高亮错一天
+            initialSelectedDateMillis = DateTimeUtils.localDateToUtcPickerMillis(
+                Calendar.getInstance().apply { set(year, month, day) }.time
+            )
         )
         DatePickerDialog(
             onDismissRequest = { showDatePicker = false },
             confirmButton = {
                 TextButton(onClick = {
                     datePickerState.selectedDateMillis?.let { millis ->
-                        val cal = Calendar.getInstance().apply { timeInMillis = millis }
+                        val picked = DateTimeUtils.utcPickerMillisToLocalDate(millis)
+                        val cal = Calendar.getInstance().apply { time = picked }
                         year = cal.get(Calendar.YEAR)
                         month = cal.get(Calendar.MONTH)
                         day = cal.get(Calendar.DAY_OF_MONTH)

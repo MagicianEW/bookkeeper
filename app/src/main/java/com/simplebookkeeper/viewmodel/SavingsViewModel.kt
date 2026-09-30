@@ -27,9 +27,9 @@ class SavingsViewModel(application: Application) : AndroidViewModel(application)
     val allSavings: StateFlow<List<Saving>> = savingRepo.getAllSavings()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    fun addSaving(type: SavingType, amountYuan: Double, note: String, date: Date = Date()) {
+    /** 金额单位：分。amountFen 必须是整数分，避免浮点误差 */
+    fun addSaving(type: SavingType, amountFen: Long, note: String, date: Date = Date()) {
         viewModelScope.launch {
-            val amountFen = (amountYuan * 100).toLong()
             val saving = Saving(
                 type = type,
                 amount = amountFen,
@@ -47,12 +47,17 @@ class SavingsViewModel(application: Application) : AndroidViewModel(application)
     fun deleteSaving(saving: Saving) {
         viewModelScope.launch {
             savingRepo.deleteSaving(saving)
+            // 删除同样需要同步，否则云端仍保留已删除的记录
+            val config = app.settingsRepository.webDavConfig.first()
+            if (config.enabled) SyncWorker.syncNow(app)
         }
     }
 
     fun deleteSavingById(id: Long) {
         viewModelScope.launch {
             savingRepo.deleteSavingById(id)
+            val config = app.settingsRepository.webDavConfig.first()
+            if (config.enabled) SyncWorker.syncNow(app)
         }
     }
 }
