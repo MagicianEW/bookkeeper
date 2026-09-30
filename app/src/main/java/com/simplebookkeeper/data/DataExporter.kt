@@ -2,9 +2,12 @@ package com.simplebookkeeper.data
 
 import android.content.Context
 import com.simplebookkeeper.data.model.Category
+import com.simplebookkeeper.data.model.PaymentMethod
 import com.simplebookkeeper.data.model.PaymentMethodEntity
 import com.simplebookkeeper.data.model.Saving
+import com.simplebookkeeper.data.model.SavingType
 import com.simplebookkeeper.data.model.Transaction
+import com.simplebookkeeper.data.model.TransactionType
 import com.simplebookkeeper.util.AppLogger
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -16,7 +19,7 @@ import net.lingala.zip4j.model.enums.EncryptionMethod
 import org.json.JSONObject
 import java.io.ByteArrayInputStream
 import java.io.File
-import java.io.InputStreamReader
+import java.util.Date
 
 /**
  * 数据导入导出工具 — CSV + ZIP 方案
@@ -209,7 +212,9 @@ object DataExporter {
                     }
                 }
 
-                dbManager.resetForReEncryption()
+                // 重建数据库实例：导入过程已写入新数据，必须让各 Repository
+                // 拿到可用实例，否则后续读写会打到已关闭的旧库上
+                dbManager.reopenDatabase()
                 AppLogger.i(TAG, "导入完成")
                 true
             } catch (e: Exception) {
@@ -290,152 +295,216 @@ object DataExporter {
 
     // ─── CSV 解析 ──────────────────────────────────────────────
 
-    private fun parseCategoriesCsv(csv: String): List<Category> {
-        val lines = csv.lines().filter { it.isNotBlank() }
-        if (lines.size <= 1) return emptyList()
+    internal fun parseCategoriesCsv(csv: String): List<Category> {
         val result = mutableListOf<Category>()
-        for (i in 1 until lines.size) {
-            val fields = parseCsvLine(lines[i])
-            if (fields.size < 6) continue
-            try {
-                result.add(Category(
-                    id = fields[0].toLongOrNull() ?: continue,
+        for (fields in dataRows(csv)) {
+            if (fields.size < 6) {
+                AppLogger.w(TAG, "分类行字段数不足(${fields.size})，已跳过: $fields")
+                continue
+            }
+            val id = fields[0].toLongOrNull()
+            val type = try { TransactionType.valueOf(fields[2]) } catch (_: Exception) { null }
+            if (id == null || type == null) {
+                AppLogger.w(TAG, "分类行解析失败，已跳过: $fields")
+                continue
+            }
+            result.add(
+                Category(
+                    id = id,
                     name = fields[1],
-                    type = try { com.simplebookkeeper.data.model.TransactionType.valueOf(fields[2]) } catch (_: Exception) { continue },
+                    type = type,
                     icon = fields[3],
                     isDefault = fields[4] == "1",
                     sortOrder = fields[5].toIntOrNull() ?: 0
-                ))
-            } catch (e: Exception) {
-                AppLogger.w(TAG, "解析分类行失败: ${lines[i]}", e)
-            }
+                )
+            )
         }
         return result
     }
 
-    private fun parseTransactionsCsv(csv: String): List<Transaction> {
-        val lines = csv.lines().filter { it.isNotBlank() }
-        if (lines.size <= 1) return emptyList()
+    internal fun parseTransactionsCsv(csv: String): List<Transaction> {
         val result = mutableListOf<Transaction>()
-        for (i in 1 until lines.size) {
-            val fields = parseCsvLine(lines[i])
-            if (fields.size < 9) continue
-            try {
-                result.add(Transaction(
-                    id = fields[0].toLongOrNull() ?: continue,
-                    type = try { com.simplebookkeeper.data.model.TransactionType.valueOf(fields[1]) } catch (_: Exception) { continue },
-                    amount = fields[2].toLongOrNull() ?: continue,
-                    categoryId = fields[3].toLongOrNull() ?: continue,
-                    paymentMethod = try { com.simplebookkeeper.data.model.PaymentMethod.valueOf(fields[4]) } catch (_: Exception) { continue },
+        for (fields in dataRows(csv)) {
+            // 兼容早期导出格式：9 列（无 updatedAt）。旧代码在这里 `else continue`
+            // 会把这类记录整条静默丢弃，导致导入后账目变少。
+            if (fields.size < 9) {
+                AppLogger.w(TAG, "交易行字段数不足(${fields.size})，已跳过: $fields")
+                continue
+            }
+            val id = fields[0].toLongOrNull()
+            val type = try { TransactionType.valueOf(fields[1]) } catch (_: Exception) { null }
+            val amount = fields[2].toLongOrNull()
+            val categoryId = fields[3].toLongOrNull()
+            val paymentMethod = try { PaymentMethod.valueOf(fields[4]) } catch (_: Exception) { null }
+            val dateMillis = fields[7].toLongOrNull()
+            val createdAt = fields[8].toLongOrNull()
+            if (id == null || type == null || amount == null || categoryId == null ||
+                paymentMethod == null || dateMillis == null || createdAt == null
+            ) {
+                AppLogger.w(TAG, "交易行解析失败，已跳过: $fields")
+                continue
+            }
+            // updatedAt 缺失时回落到 createdAt
+            val updatedAt = if (fields.size > 9) {
+                fields[9].toLongOrNull() ?: createdAt
+            } else {
+                AppLogger.i(TAG, "交易 ${fields[0]} 为旧格式(9列)，updatedAt 取 createdAt")
+                createdAt
+            }
+            result.add(
+                Transaction(
+                    id = id,
+                    type = type,
+                    amount = amount,
+                    categoryId = categoryId,
+                    paymentMethod = paymentMethod,
                     customPaymentMethod = fields[5].ifBlank { null },
                     note = fields[6],
-                    date = java.util.Date(fields[7].toLongOrNull() ?: continue),
-                    createdAt = fields[8].toLongOrNull() ?: continue,
-                    updatedAt = if (fields.size > 9) fields[9].toLongOrNull() ?: continue else continue
-                ))
-            } catch (e: Exception) {
-                AppLogger.w(TAG, "解析交易行失败: ${lines[i]}", e)
-            }
+                    date = Date(dateMillis),
+                    createdAt = createdAt,
+                    updatedAt = updatedAt
+                )
+            )
         }
         return result
     }
 
-    private fun parseSavingsCsv(csv: String): List<Saving> {
-        val lines = csv.lines().filter { it.isNotBlank() }
-        if (lines.size <= 1) return emptyList()
+    internal fun parseSavingsCsv(csv: String): List<Saving> {
         val result = mutableListOf<Saving>()
-        for (i in 1 until lines.size) {
-            val fields = parseCsvLine(lines[i])
-            if (fields.size < 7) continue
-            try {
-                result.add(Saving(
-                    id = fields[0].toLongOrNull() ?: continue,
-                    type = try { com.simplebookkeeper.data.model.SavingType.valueOf(fields[1]) } catch (_: Exception) { continue },
-                    amount = fields[2].toLongOrNull() ?: continue,
-                    note = fields[3],
-                    date = java.util.Date(fields[4].toLongOrNull() ?: continue),
-                    createdAt = fields[5].toLongOrNull() ?: continue,
-                    updatedAt = fields[6].toLongOrNull() ?: continue
-                ))
-            } catch (e: Exception) {
-                AppLogger.w(TAG, "解析储蓄行失败: ${lines[i]}", e)
+        for (fields in dataRows(csv)) {
+            if (fields.size < 7) {
+                AppLogger.w(TAG, "储蓄行字段数不足(${fields.size})，已跳过: $fields")
+                continue
             }
+            val id = fields[0].toLongOrNull()
+            val type = try { SavingType.valueOf(fields[1]) } catch (_: Exception) { null }
+            val amount = fields[2].toLongOrNull()
+            val dateMillis = fields[4].toLongOrNull()
+            val createdAt = fields[5].toLongOrNull()
+            if (id == null || type == null || amount == null || dateMillis == null || createdAt == null) {
+                AppLogger.w(TAG, "储蓄行解析失败，已跳过: $fields")
+                continue
+            }
+            result.add(
+                Saving(
+                    id = id,
+                    type = type,
+                    amount = amount,
+                    note = fields[3],
+                    date = Date(dateMillis),
+                    createdAt = createdAt,
+                    updatedAt = fields[6].toLongOrNull() ?: createdAt
+                )
+            )
         }
         return result
     }
 
-    private fun parsePaymentMethodsCsv(csv: String): List<PaymentMethodEntity> {
-        val lines = csv.lines().filter { it.isNotBlank() }
-        if (lines.size <= 1) return emptyList()
+    internal fun parsePaymentMethodsCsv(csv: String): List<PaymentMethodEntity> {
         val result = mutableListOf<PaymentMethodEntity>()
-        for (i in 1 until lines.size) {
-            val fields = parseCsvLine(lines[i])
-            if (fields.size < 4) continue
-            try {
-                result.add(PaymentMethodEntity(
+        for (fields in dataRows(csv)) {
+            if (fields.size < 4) {
+                AppLogger.w(TAG, "支付方式行字段数不足(${fields.size})，已跳过: $fields")
+                continue
+            }
+            val type = try { TransactionType.valueOf(fields[2]) } catch (_: Exception) { null }
+            if (type == null) {
+                AppLogger.w(TAG, "支付方式行解析失败，已跳过: $fields")
+                continue
+            }
+            result.add(
+                PaymentMethodEntity(
                     id = fields[0].toLongOrNull() ?: 0,
                     name = fields[1],
-                    type = try { com.simplebookkeeper.data.model.TransactionType.valueOf(fields[2]) } catch (_: Exception) { continue },
+                    type = type,
                     isDefault = fields[3] == "1"
-                ))
-            } catch (e: Exception) {
-                AppLogger.w(TAG, "解析支付方式行失败: ${lines[i]}", e)
-            }
+                )
+            )
         }
         return result
     }
 
     // ─── CSV 工具 ──────────────────────────────────────────────
 
-    private fun escapeCsv(field: String): String {
+    internal fun escapeCsv(field: String): String {
         if (field.contains(',') || field.contains('\n') || field.contains('\r') || field.contains('"')) {
             return "\"${field.replace("\"", "\"\"")}\""
         }
         return field
     }
 
-    private fun parseCsvLine(line: String): List<String> {
-        val result = mutableListOf<String>()
+    /**
+     * 解析整个 CSV 文本为「行 → 字段」的两级结构。
+     *
+     * 旧实现是 `csv.lines().forEach { parseCsvLine(it) }`：按物理行切分。
+     * 但 escapeCsv 会把含换行的字段写成跨物理行的引号字段，于是备注里
+     * 有换行时整份 CSV 会错行解析 —— 导入后一条记录被拆成两条脏数据。
+     * 这里改成按字符扫描、引号内换行视为普通字符。
+     */
+    internal fun parseCsv(csv: String): List<List<String>> {
+        val rows = mutableListOf<List<String>>()
+        var row = mutableListOf<String>()
+        val field = StringBuilder()
+        var inQuotes = false
         var i = 0
-        val len = line.length
 
-        while (i <= len) {
-            if (i == len) {
-                result.add("")
-                break
-            }
-
-            if (line[i] == '"') {
-                val sb = StringBuilder()
-                i++
-                while (i < len) {
-                    if (line[i] == '"') {
-                        if (i + 1 < len && line[i + 1] == '"') {
-                            sb.append('"')
-                            i += 2
-                        } else {
-                            i++
-                            break
-                        }
-                    } else {
-                        sb.append(line[i])
-                        i++
+        while (i < csv.length) {
+            val ch = csv[i]
+            when {
+                inQuotes && ch == '"' -> {
+                    // 双写 "" 表示字面量引号
+                    if (i + 1 < csv.length && csv[i + 1] == '"') {
+                        field.append('"')
+                        i += 2
+                        continue
                     }
+                    inQuotes = false
+                    i++
                 }
-                result.add(sb.toString())
-                if (i < len && line[i] == ',') i++
-            } else {
-                val commaIndex = line.indexOf(',', i)
-                if (commaIndex == -1) {
-                    result.add(line.substring(i))
-                    break
-                } else {
-                    result.add(line.substring(i, commaIndex))
-                    i = commaIndex + 1
+                inQuotes -> {
+                    // 引号内的换行/逗号都是普通字符
+                    field.append(ch)
+                    i++
+                }
+                ch == '"' -> {
+                    inQuotes = true
+                    i++
+                }
+                ch == ',' -> {
+                    row.add(field.toString())
+                    field.setLength(0)
+                    i++
+                }
+                ch == '\r' -> {
+                    // 忽略 CR，由 \n 统一处理行结束
+                    i++
+                }
+                ch == '\n' -> {
+                    row.add(field.toString())
+                    field.setLength(0)
+                    rows.add(row)
+                    row = mutableListOf()
+                    i++
+                }
+                else -> {
+                    field.append(ch)
+                    i++
                 }
             }
         }
 
-        return result
+        // 收尾：最后一行没有换行符时仍要产出
+        if (field.isNotEmpty() || row.isNotEmpty()) {
+            row.add(field.toString())
+            rows.add(row)
+        }
+
+        return rows.filter { r -> r.any { it.isNotBlank() } }
+    }
+
+    /** 解析出数据行（跳过表头） */
+    private fun dataRows(csv: String): List<List<String>> {
+        val rows = parseCsv(csv)
+        return if (rows.isEmpty()) emptyList() else rows.drop(1)
     }
 }
