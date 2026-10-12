@@ -2,7 +2,7 @@
 
 > A lightweight, clean, privacy-focused Android personal expense tracker with income/expense management, savings tracking, and WebDAV cloud sync
 
-**Version**: v0.4.6 ｜ **Minimum OS**: Android 12 (API 31)
+**Version**: v0.4.7 ｜ **Minimum OS**: Android 12 (API 31)
 
 [简体中文](README.md) ｜ [繁體中文](README.zh-TW.md)
 
@@ -121,6 +121,19 @@ Uses the **WebDAV protocol**, compatible with major private cloud services (Next
 
 ---
 
+## Download
+
+Grab the latest version from the [Releases page](https://github.com/MagicianEW/bookkeeper/releases).
+
+| Artifact | Notes |
+|----------|-------|
+| `app-debug.apk` | Debug build, signed with the debug certificate — install directly to try every feature |
+| `app-release-unsigned.apk` | Release build (R8 minified and resource-shrunk, ~10 MB), **unsigned** — you must sign it before installing |
+
+> No signing certificate is bundled with the release build, so it cannot be installed as-is. Sign it yourself via Android Studio's **Build → Generate Signed Bundle / APK**, or with the `apksigner` tool.
+
+---
+
 ## Building
 
 **Prerequisites:**
@@ -151,6 +164,7 @@ app/build/outputs/apk/debug/app-debug.apk
 
 | Version | Notes |
 |---------|-------|
+| v0.4.7 | **Code review fixes (data safety & accuracy)**: Fixed password salt hex decoding dropping leading zero bytes, which permanently locked out roughly 1 in 256 users after setting a password (covered by a 5000-iteration random salt round-trip test); fixed amount conversion silently losing one cent via `Double` (19.99 was recorded as 19.98); fixed the save button becoming permanently dead after a single mis-tap; fixed the app crashing on data import / cloud restore (root cause: SQLCipher's `SupportFactory` clears the in-memory passphrase after the first open and must not be reused); fixed records being split across lines on export/import when a note contains a newline, and legacy-format records being silently dropped; restored TLS certificate verification for WebDAV (self-signed certificates now require explicitly enabling trust with a confirmation prompt); each ledger row now shows its payment method (introduced in v0.4.6 but never displayed); fixed duplicate preset payment methods in the English UI; unified the timezone handling of all three date pickers; fixed the search collector leak and the year list not refreshing; removed unused storage permissions and disabled data backup; added GitHub Actions CI and Room schema export |
 | v0.4.6 | **Code review fixes + Custom payment/collection methods**: Fixed search results not updating (Flow→collect); added transaction protection for data import; fail-fast when password storage is unavailable during sync; cached EncryptedSharedPreferences instance; getAllYears changed to suspend; extracted SimpleDateFormat as top-level constants; added year selection boundary protection; min password length increased from 4 to 6; fixed hexToBytes signed byte issue; WorkManager sync policy changed to UPDATE; AppLogger streaming I/O; MainViewModel lazy initialization optimization; **Added custom payment/collection method management** with add, delete, and import/export backup support |
 | v0.4.4 | **UI improvements & keyboard handling**: Theme mode and language switched to dropdown menus; fixed virtual keyboard covering input fields; fixed HomeScreen day card spacing |
 | v0.4.3 | **Security & stability enhancements**: Upgraded password hashing to PBKDF2; migrated WebDAV credentials to EncryptedSharedPreferences; refactored MainViewModel into TransactionViewModel, SyncViewModel, SavingsViewModel; removed runBlocking calls; cached available years to avoid repeated DB queries; improved WebDAV SSL support; added PasswordManager unit tests |
