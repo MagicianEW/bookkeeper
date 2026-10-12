@@ -2,7 +2,7 @@
 
 > 一款輕量、簡潔、注重隱私的 Android 個人記帳應用，支援收入/支出管理、儲蓄追蹤、WebDAV 雲端同步
 
-**版本**：v0.4.6　｜　**最低系統**：Android 12（API 31）
+**版本**：v0.4.7　｜　**最低系統**：Android 12（API 31）
 
 [简体中文](README.md) ｜ [English](README.en.md)
 
@@ -121,6 +121,20 @@
 
 ---
 
+## 下載
+
+前往 [Releases 頁面](https://github.com/MagicianEW/bookkeeper/releases) 下載最新版本。
+
+| 產物 | 說明 |
+|------|------|
+| `app-debug.apk` | 偵錯版，已用偵錯憑證簽章，可直接安裝體驗全部功能 |
+| `app-release-unsigned.apk` | 發布版（已做 R8 壓縮與資源裁剪，體積約 10M），**未簽章**，需自行簽章後才能安裝 |
+
+> 發布版未附帶簽章憑證，因此無法直接安裝。若要自行簽章，可使用 Android Studio 的
+> **Build → Generate Signed Bundle / APK**，或用 `apksigner` 工具簽章。
+
+---
+
 ## 建置方式
 
 **環境需求：**
@@ -151,6 +165,7 @@ app/build/outputs/apk/debug/app-debug.apk
 
 | 版本 | 說明 |
 |------|------|
+| v0.4.7 | **代碼審查修復（資料安全與準確性）**：修復密碼鹽 hex 解碼吞掉前導零，導致約 1/256 使用者設定密碼後永久無法解鎖（附 5000 次隨機鹽往返測試）；修復金額用 `Double` 換算靜默少記 1 分（如 19.99 被記成 19.98）；修復儲存按鈕一次誤點後永久失效；修復資料匯入／雲端恢復後應用程式崩潰退出（根因為 SQLCipher `SupportFactory` 首次開啟後會清除記憶體中的金鑰，不可重複使用）；修復匯入匯出時備註含換行導致記錄被拆行、舊格式記錄被靜默丟棄；WebDAV 恢復 TLS 憑證驗證（自簽憑證改為需明確開啟信任並二次確認）；帳目列新增付款方式顯示（v0.4.6 引入但一直未顯示）；修復英文介面預設收付款方式重複出現；統一三處日期選擇器時區；修復搜尋收集器洩漏與年份清單不重新整理；移除無用儲存權限並關閉資料備份；新增 GitHub Actions CI 與 Room schema 匯出 |
 | v0.4.6 | **代碼審查修復 + 自訂收/付款方式**：修復搜索結果不更新問題（Flow改為collect）；數據導入添加事務保護；同步時密碼存儲損壞時主動報錯；EncryptedSharedPreferences實例緩存優化；getAllYears改為suspend；SimpleDateFormat提取為頂層常數；年份選擇增加邊界保護；密碼最小長度從4位改為6位；hexToBytes有符號位元組修復；WorkManager同步策略改為UPDATE；AppLogger流式讀寫；MainViewModel lazy初始化優化；**新增自訂收/付款方式功能**，支援添加、刪除、導入導出備份 |
 | v0.4.4 | **UI 優化與鍵盤適配**：主題模式和語言選項改為下拉選單；修復虛擬鍵盤遮擋輸入框問題；修復 HomeScreen 日視圖卡片間距 |
 | v0.4.3 | **安全性與穩定性增強**：密碼雜湊升級為 PBKDF2；WebDAV 憑據遷移至 EncryptedSharedPreferences；重構 MainViewModel 為 TransactionViewModel、SyncViewModel、SavingsViewModel；移除 runBlocking 呼叫；快取可用年份避免重複資料庫查詢；WebDAV SSL 支援改進；新增 PasswordManager 單元測試 |
