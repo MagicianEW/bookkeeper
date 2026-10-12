@@ -212,9 +212,17 @@ object DataExporter {
                     }
                 }
 
-                // 重建数据库实例：导入过程已写入新数据，必须让各 Repository
-                // 拿到可用实例，否则后续读写会打到已关闭的旧库上
-                dbManager.reopenDatabase()
+                // 注意：这里绝对不能关闭/重建数据库实例。
+                // 数据库全程以 SQLCipher 加密保持打开，直接写入即可，Room 的
+                // InvalidationTracker 会自动让界面上的 Flow 刷新。
+                //
+                // 历史教训：v0.4.6 之前导入后会 clearInstance() 关库，但
+                // DatabaseManager 与各 Repository 持有的 DAO 都指向那个旧实例，
+                // 于是 ①后续读写全部打到已关闭的库 ②旧实例的
+                // InvalidationTracker 在关闭后仍尝试重连查询 ③即使重建实例，
+                // 也绝不能复用同一个 SupportFactory —— SQLCipher 会在首次
+                // 打开数据库后清除内存中的密钥，复用会抛
+                // IllegalStateException: The passphrase appears to be cleared。
                 AppLogger.i(TAG, "导入完成")
                 true
             } catch (e: Exception) {

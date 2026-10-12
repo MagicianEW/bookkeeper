@@ -46,11 +46,13 @@ class DatabaseManager(private val context: Context) {
     // 加密管理器（Android Keystore + EncryptedSharedPreferences）
     private val encryption = DatabaseEncryption(context)
     private val supportFactory by lazy { encryption.getSupportFactory() }
-    /** SQLCipher SupportFactory，供外部验证加密数据库可访问性 */
-    val cipherFactory get() = supportFactory
 
-    // 注意：这里不能是 `by lazy` 的 val —— 导入/云恢复会关闭并重建数据库实例，
-    // 缓存的 val 会一直指向已关闭的对象，导致之后所有读写都抛异常。
+    /**
+     * 当前数据库实例。
+     *
+     * 用 var 而非 `by lazy val`，是为了在打开失败时能换成一个可用实例 ——
+     * 否则持有的引用会一直指向已关闭的对象，之后所有读写都抛异常。
+     */
     @Volatile
     private var _db: AppDatabase = AppDatabase.getInstance(context, supportFactory)
 
@@ -64,15 +66,19 @@ class DatabaseManager(private val context: Context) {
     val dbFile: File get() = context.getDatabasePath(AppDatabase.DB_NAME)
 
     /**
-     * 重建数据库实例。
+     * 用**全新的** SupportFactory 重建数据库实例。
      *
-     * 导入 ZIP 或从云端恢复之后必须调用：旧的 RoomDatabase 已被 close()，
-     * 而各个 Repository 持有的 DAO 都来自旧实例。重建后它们会通过
-     * DatabaseManager 拿到新实例，应用可继续正常读写，无需重启。
+     * 必须新建 factory：SQLCipher 的 SupportFactory 在首次成功打开数据库后
+     * 会主动清除内存中的密钥（安全设计），复用同一个实例重建会抛
+     * `IllegalStateException: The passphrase appears to be cleared`。
+     *
+     * 仅在数据库打开失败、需要换一个干净实例时使用。
+     * 正常的数据导入不要调用它 —— 直接写入已打开的库即可，
+     * 见 DataExporter.importFromZip 的说明。
      */
-    fun reopenDatabase() {
-        _db = AppDatabase.recreateInstance(context, supportFactory)
-        AppLogger.i(TAG, "数据库实例已重建")
+    private fun reopenDatabase() {
+        _db = AppDatabase.recreateInstance(context, encryption.getSupportFactory())
+        AppLogger.i(TAG, "数据库实例已用新的 SupportFactory 重建")
     }
 
     suspend fun initialize() {
@@ -93,8 +99,14 @@ class DatabaseManager(private val context: Context) {
             _db.openHelper.writableDatabase
             AppLogger.i(TAG, "数据库验证通过")
         } catch (e: Exception) {
-            AppLogger.e(TAG, "数据库验证失败（可能密钥不匹配），将重新创建", e)
-            AppDatabase.clearInstance()
+            // 原实现只 clearInstance()，但 _db 仍指向那个打不开的实例，
+            // 之后每次读写都会重复抛错。这里换成一个全新的实例。
+            AppLogger.e(TAG, "数据库验证失败（可能密钥不匹配），将用新实例重建", e)
+            try {
+                reopenDatabase()
+            } catch (e2: Exception) {
+                AppLogger.e(TAG, "数据库重建仍然失败", e2)
+            }
         }
     }
 
