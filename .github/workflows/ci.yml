@@ -23,6 +23,10 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v3
 
+      - name: Check README version matches versionName
+        # README 的版本号是硬编码的，校验脚本防止发版时漏改三语 README
+        run: bash scripts/check-version.sh
+
       - name: Run unit tests
         # 金额解析、密码盐编解码、CSV 往返都属于"错了会静默丢数据"的纯函数，
         # 必须在每次提交时验证
