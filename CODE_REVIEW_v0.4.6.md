@@ -1,7 +1,6 @@
 # 简单记账 SimpleBookkeeper v0.4.6 — 产品功能 × 代码实现审查报告
 
 - 审查对象：`https://github.com/MagicianEW/bookkeeper` @ `2d632fc`（v0.4.6）
-- 本地路径：`/Users/xingxiaoshu/开发/bookkeeper`
 - 技术栈：Kotlin + Jetpack Compose + Room 6 + SQLCipher + DataStore + OkHttp/WebDAV + WorkManager
 - 规模：44 个 Kotlin 文件 / 7,538 行
 - 方法：以 README 承诺的产品功能为纲，逐条核对实现路径；关键推断已实际运行验证
