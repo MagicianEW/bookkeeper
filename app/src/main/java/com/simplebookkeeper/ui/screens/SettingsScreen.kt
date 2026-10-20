@@ -39,6 +39,7 @@ import com.simplebookkeeper.sync.SyncWorker
 import com.simplebookkeeper.ui.theme.LanguageMode
 import com.simplebookkeeper.ui.theme.ThemeMode
 import com.simplebookkeeper.util.AppLogger
+import com.simplebookkeeper.util.AppVersion
 import com.simplebookkeeper.viewmodel.MainViewModel
 import androidx.fragment.app.FragmentActivity
 import kotlinx.coroutines.flow.first
@@ -1144,7 +1145,7 @@ fun AboutDialog(onDismiss: () -> Unit) {
                     color = MaterialTheme.colorScheme.primaryContainer
                 ) {
                     Text(
-                        "v$versionName",
+                        AppVersion.format(versionName),
                         style = MaterialTheme.typography.labelLarge,
                         color = MaterialTheme.colorScheme.onPrimaryContainer,
                         modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)

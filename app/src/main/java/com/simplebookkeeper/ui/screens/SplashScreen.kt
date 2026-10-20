@@ -16,6 +16,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.simplebookkeeper.R
+import com.simplebookkeeper.util.AppVersion
 
 @Composable
 fun SplashScreen() {
@@ -50,7 +51,7 @@ fun SplashScreen() {
             )
             Spacer(modifier = Modifier.height(48.dp))
             Text(
-                text = "v$versionName",
+                text = AppVersion.format(versionName),
                 fontSize = 12.sp,
                 color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.7f)
             )
