@@ -1,18 +1,29 @@
+// 仓库源策略
+//
+// 背景：阿里云镜像的境外 CDN 节点上有部分构件没同步，对这些路径会返回
+// 502 Bad Gateway。而 Gradle 遇到 5xx 会直接中止整条解析链、不会退到下一个
+// 仓库 —— 于是表现为「本地能构建、CI 必红」，且失败点会随构件不同而漂移
+// （先后踩过 KSP 插件、io.netty、com.google.j2objc）。
+//
+// 策略：
+// - CI（GitHub Actions runner 在境外）：只用官方源，不碰阿里云，彻底避开 502。
+// - 本地（国内）：仍优先走阿里云镜像保证速度，官方源兜底。
+//
+// 遇到本地镜像抽风时，可用 -PofficialRepos=true 强制切到官方源。
+//
+// 注意：pluginManagement {} 会被 Gradle 单独编译，看不到脚本顶层的声明，
+// 所以这里的判断条件在两个块里各写一份。
+
 pluginManagement {
     repositories {
-        // KSP 插件在阿里云的境外 CDN 节点上会返回 502 Bad Gateway（该构件没有同步到
-        // 那个区域），而 Gradle 遇到 5xx 会直接中止整个解析、不会退到下一个仓库，
-        // 于是排在后面的官方源根本没机会生效，CI 每次都红在插件解析这一步。
-        // 用 exclusiveContent 把 com.google.devtools.ksp 这一组独占到官方插件门户，
-        // 其他插件（AGP / Kotlin）仍走阿里云，国内本地开发速度不受影响。
-        exclusiveContent {
-            forRepository { gradlePluginPortal() }
-            filter { includeGroup("com.google.devtools.ksp") }
+        val officialOnly = System.getenv("CI") == "true" ||
+            providers.gradleProperty("officialRepos").orNull == "true"
+        if (!officialOnly) {
+            maven { url = uri("https://maven.aliyun.com/repository/google") }
+            maven { url = uri("https://maven.aliyun.com/repository/central") }
+            maven { url = uri("https://maven.aliyun.com/repository/gradle-plugin") }
         }
-        maven { url = uri("https://maven.aliyun.com/repository/google") }
-        maven { url = uri("https://maven.aliyun.com/repository/central") }
-        maven { url = uri("https://maven.aliyun.com/repository/gradle-plugin") }
-        // 官方源兜底
+        // 官方源
         gradlePluginPortal()
         mavenCentral()
         google()
@@ -21,17 +32,16 @@ pluginManagement {
 dependencyResolutionManagement {
     repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
     repositories {
-        // 同理：KSP 的实际构件（symbol-processing-*）也从中央仓库取，绕开阿里云 502
-        exclusiveContent {
-            forRepository { mavenCentral() }
-            filter { includeGroup("com.google.devtools.ksp") }
+        val officialOnly = System.getenv("CI") == "true" ||
+            providers.gradleProperty("officialRepos").orNull == "true"
+        if (!officialOnly) {
+            maven { url = uri("https://maven.aliyun.com/repository/google") }
+            maven { url = uri("https://maven.aliyun.com/repository/central") }
         }
-        maven { url = uri("https://maven.aliyun.com/repository/google") }
-        maven { url = uri("https://maven.aliyun.com/repository/central") }
-        // 官方源兜底
-        gradlePluginPortal()
-        mavenCentral()
+        // 官方源
         google()
+        mavenCentral()
+        gradlePluginPortal()
     }
 }
 
