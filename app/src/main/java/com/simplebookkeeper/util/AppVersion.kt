@@ -3,7 +3,7 @@ package com.simplebookkeeper.util
 /**
  * 版本号显示规范化。
  *
- * build.gradle.kts 里的 versionName 写的是 "v0.4.7"（带 v 前缀），
+ * build.gradle.kts 里的 versionName 写的是 "v0.4.8"（带 v 前缀），
  * 而历史版本的 UI 又自己拼了一个 "v"，于是启动页和关于页显示成了
  * "vv0.4.7"。这里统一处理，保证任何输入都恰好显示一个 v 前缀。
  */
